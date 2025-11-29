@@ -6,6 +6,7 @@ from rapidfuzz import process, fuzz
 import PyPDF2
 import io
 import re
+import os
 
 app = FastAPI(
     title="Vercel + FastAPI",
@@ -14,7 +15,11 @@ app = FastAPI(
 )
 
 # Load spaCy model
-nlp = spacy.load("en_core_web_sm")
+# Define the path to the local spaCy model
+SPACY_MODEL_PATH = os.path.join(os.getcwd(), "spacy_model")
+
+# Load the spaCy model from the local directory
+nlp = spacy.load(SPACY_MODEL_PATH)
 
 # Known skills for fuzzy matching
 KNOWN_SKILLS = [
