@@ -1,12 +1,106 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse
-
+import spacy
+from spacy.matcher import Matcher
+from rapidfuzz import process, fuzz
+import PyPDF2
+import io
+import re
 
 app = FastAPI(
     title="Vercel + FastAPI",
     description="Vercel + FastAPI",
     version="1.0.0",
 )
+
+# Load spaCy model
+nlp = spacy.load("en_core_web_sm")
+
+# Known skills for fuzzy matching
+KNOWN_SKILLS = [
+    "Python", "JavaScript", "Java", "C++", "C#", "Ruby", "Go", "Swift", "Kotlin",
+    "React", "Angular", "Vuejs", "Nodejs", "Django", "Flask", "Spring",
+    "SQL", "NoSQL", "MongoDB", "PostgreSQL", "MySQL", "Git", "Docker", "Kubernetes",
+    "AWS", "Azure", "Google Cloud", "Terraform", "Jenkins", "CI/CD"
+]
+
+def extract_text_from_pdf(pdf_content: bytes) -> str:
+    """Extracts text from a PDF file."""
+    pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_content))
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text()
+    return text
+
+def extract_years_of_experience(text: str) -> list:
+    """Extracts years of experience using regex."""
+    return re.findall(r"(\d+)\s+years\s+of\s+experience", text, re.IGNORECASE)
+
+@app.post("/api/extract-cv")
+async def extract_cv(file: UploadFile = File(...)):
+    """
+    Extracts information from a CV.
+    - Extracts job title, years of experience, skills, tools, and project keywords.
+    - Normalizes skill names using fuzzy matching.
+    """
+    content = await file.read()
+
+    text = ""
+    if file.filename.endswith(".pdf"):
+        text = extract_text_from_pdf(content)
+    else:
+        text = content.decode("utf-8")
+
+    doc = nlp(text)
+    matcher = Matcher(nlp.vocab)
+
+    # Rule-based patterns for job titles
+    job_title_patterns = [
+        [{"POS": "NOUN", "OP": "+"}, {"LOWER": "developer"}],
+        [{"POS": "NOUN", "OP": "+"}, {"LOWER": "engineer"}],
+        [{"POS": "NOUN", "OP": "+"}, {"LOWER": "architect"}],
+    ]
+    matcher.add("JOB_TITLE", job_title_patterns)
+
+    # Extract entities
+    entities = {
+        "job_title": [],
+        "years_of_experience": extract_years_of_experience(text),
+        "skills": [],
+        "tools": [],
+        "project_keywords": []
+    }
+
+    matches = matcher(doc)
+    for match_id, start, end in matches:
+        span = doc[start:end]
+        entities["job_title"].append(span.text)
+
+    for ent in doc.ents:
+        if ent.label_ in ["SKILL", "TOOL", "ORG", "PRODUCT"]:
+            # Normalize skill/tool names
+            match, score, _ = process.extractOne(ent.text, KNOWN_SKILLS, scorer=fuzz.WRatio)
+            if score >= 80:  # Confidence threshold
+                if ent.label_ in ["SKILL", "ORG", "PRODUCT"]:
+                    entities["skills"].append(match)
+                else:
+                    entities["tools"].append(match)
+            else:
+                if ent.label_ in ["SKILL", "ORG", "PRODUCT"]:
+                    entities["skills"].append(ent.text)
+                else:
+                    entities["tools"].append(ent.text)
+
+    # Simple keyword extraction for projects
+    for token in doc:
+        if token.pos_ == "NOUN" and not token.is_stop and len(token.text) > 2:
+            entities["project_keywords"].append(token.lemma_)
+
+    # Remove duplicates
+    for key in entities:
+        entities[key] = list(set(entities[key]))
+
+    return entities
 
 
 @app.get("/api/data")
