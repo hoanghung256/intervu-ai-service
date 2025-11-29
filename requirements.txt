@@ -5,5 +5,5 @@ rapidfuzz
 PyPDF2
 python-multipart
 en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0.tar.gz
-sentence-transformers
-torch
+#sentence-transformers
+#torch
