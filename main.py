@@ -1,18 +1,44 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks
 from fastapi.responses import HTMLResponse
 import spacy
 from spacy.matcher import Matcher
 from rapidfuzz import process, fuzz
-import PyPDF2
+import pdfplumber
 import io
 import re
+from text_anonymizer import anonymize
+from dotenv import load_dotenv
 import os
+import requests
+import httpx
+import json
+from typing import List
+
+load_dotenv()
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 app = FastAPI(
-    title="Vercel + FastAPI",
-    description="Vercel + FastAPI",
+    title="FastAPI",
+    description="FastAPI",
     version="1.0.0",
 )
+
+HEADERS = {
+    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+    "Content-Type": "application/json",
+}
+
+MODELS = [
+        "tngtech/deepseek-r1t-chimera:free",
+        "openai/gpt-oss-20b:free",
+        "mistralai/mistral-7b-instruct:free",
+        "qwen/qwen3-235b-a22b:free",
+        "mistralai/mistral-small-3.2-24b-instruct",
+        "tngtech/deepseek-r1t2-chimera:free",
+        "qwen/qwen3-4b:free",
+        "x-ai/grok-4.1-fast:free",
+    ]
 
 # Load spaCy model
 # Define the path to the local spaCy model
@@ -29,83 +55,223 @@ KNOWN_SKILLS = [
     "AWS", "Azure", "Google Cloud", "Terraform", "Jenkins", "CI/CD"
 ]
 
+WHITELIST = {
+    # Original entries
+    "FPT University", "Coursera", "English", "Japanese", "Web",
+    "API", "OTP", "Google", "Servlets", "JSP", "Time",
+
+    # Extra entries
+    "TensorFlow", "PyTorch", "Keras", "GCP", "Linux", "GitHub",
+    "Bitbucket", "Slack", "Zoom", "JIRA", "Confluence", "Redis"
+}
+WHITELIST.update(KNOWN_SKILLS)
+
+async def chat_with_fallback(
+    message: str,
+    models: List[str],
+    max_retries: int = 1,
+    timeout: int = 10
+) -> str:
+    """
+    Try multiple models in order until one responds successfully.
+    Returns the assistant's message or raises an exception if all fail.
+    """
+    last_exception = None
+
+    for model in models:
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    response = await client.post(
+                        url="https://openrouter.ai/api/v1/chat/completions",
+                        headers=HEADERS,
+                        data=json.dumps({
+                            "model": model,
+                            "messages": [{"role": "user", "content": message}]
+                        }),
+                        timeout=timeout
+                    )
+                response.raise_for_status()
+                data = response.json()
+
+                # Extract content (adapt based on API response structure)
+                # Some APIs return `choices` array
+                # print(data)
+                return data["choices"][0]["message"]["content"]
+
+            except requests.exceptions.RequestException as e:
+                last_exception = e
+                print(f"[Warning] Model {model} attempt {attempt+1} failed: {e}")
+                # Try again up to max_retries
+
+        print(f"[Info] Switching to next model after {max_retries} failed attempts: {model}")
+
+    raise RuntimeError(f"All models failed. Last exception: {last_exception}")
+
+def clean_json_string(s: str) -> str:
+    # Extract first {...} block
+    match = re.search(r"\{.*\}", s, re.DOTALL)
+    return match.group(0) if match else s
+
+async def parse_cv_to_json(cv_text: str) -> dict:
+    """
+    Send anonymized CV text to the LLM and return structured JSON.
+    """
+
+    # Construct the prompt
+    prompt = f"""
+You are a CV parsing assistant.
+
+You will receive the text of a CV. Some personal information like names, emails, phone numbers, and addresses has already been anonymized. 
+
+Your task is to extract structured information from the CV and output it as a JSON object with the following format:
+
+{{
+  "summary": "<short professional summary or objective>",
+  "skills": ["skill1", "skill2", "..."],
+  "languages": ["language1", "language2", "..."],
+  "experiences": [
+    {{
+      "job_title": "<Job title>",
+      "company": "<Company name>",
+      "description": "<Brief summary of responsibilities and achievements>"
+    }}
+  ],
+  "certifications": ["certification1", "certification2", "..."]
+}}
+
+Rules:
+1. Only include information explicitly mentioned in the CV. Do not make assumptions.
+2. Preserve anonymized placeholders as-is.
+3. Organize experiences and education in chronological order, most recent first.
+4. If a field is not available, leave it as an empty string or empty array/object.
+5. Make JSON valid (use double quotes and proper syntax).
+6. **Output JSON only. Do not include any text outside the JSON object.**
+7. Do not add explanations, notes, or commentary.
+
+Here is the CV text:
+
+\"\"\"{cv_text}\"\"\"
+"""
+
+    # Send request to OpenRouter API
+    answer = await chat_with_fallback(prompt, MODELS)
+    answer = clean_json_string(answer)
+    try:
+        structured_json = json.loads(answer)
+    except json.JSONDecodeError:
+        structured_json = {}  # fallback
+
+    return structured_json
+
+async def generate_interview_questions(cv_text: str):
+    """
+    A background task to generate interview questions based on the CV.
+    """
+    prompt = f"""
+You are an interview question generator.
+
+Based on the following CV text, generate 5–10 relevant interview questions tailored to the candidate's skills, experience, and background.
+
+Return the result as a **JSON array of strings only**, with no additional text, explanation, or wrapping.
+
+Example format:
+{{
+  "questions" : [
+  "Question 1?",
+  "Question 2?",
+  "Question 3?"
+  ],
+}}
+
+CV Text:
+\"\"\"{cv_text}\"\"\"
+
+1. Make JSON valid (use double quotes and proper syntax).
+2. **Output JSON only. Do not include any text outside the JSON object.**
+3. Do not add explanations, notes, or commentary.
+"""
+    try:
+        response = await chat_with_fallback(prompt, MODELS)
+        response = clean_json_string(response)
+        # For now, we just print the questions. In a real app, we might save them to a database.
+        print(f"[BackgroundTask] Generated Interview Questions:\n{response}")
+    except Exception as e:
+        print(f"[BackgroundTask] Error generating interview questions: {e}")
+
 def extract_text_from_pdf(pdf_content: bytes) -> str:
-    """Extracts text from a PDF file."""
-    pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_content))
+    """Extracts text from a PDF file using pdfplumber."""
     text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text()
+    with pdfplumber.open(io.BytesIO(pdf_content)) as pdf:
+        for page in pdf.pages:
+            page_text = page.extract_text()
+            if page_text:  # some pages may be empty
+                text += page_text + "\n"
     return text
 
-def extract_years_of_experience(text: str) -> list:
-    """Extracts years of experience using regex."""
-    return re.findall(r"(\d+)\s+years\s+of\s+experience", text, re.IGNORECASE)
+def anonymize_with_whitelist(text: str, whitelist: set[str]):
+    anonymized_text, anonymization_map = anonymize(text)
+
+    for placeholder, original in list(anonymization_map.items()):
+        if original in whitelist:
+            anonymized_text = anonymized_text.replace(placeholder, original)
+            del anonymization_map[placeholder]
+
+    return anonymized_text, anonymization_map
+
+def extract_and_normalize_skills(text: str, known_skills: list[str], threshold: int = 85) -> list[str]:
+    """
+    Extracts entities using spaCy and normalizes them against a list of known skills
+    using fuzzy matching.
+    """
+    doc = nlp(text)
+    
+    # 1. Extract potential skills using spaCy's NER (entities)
+    potential_skills = {ent.text for ent in doc.ents if ent.label_ in ["ORG", "PRODUCT", "WORK_OF_ART", "LANGUAGE"]}
+    
+    # 2. Add any text that matches known skills exactly (case-insensitive)
+    # This helps catch skills spaCy might have missed.
+    text_lower = text.lower()
+    for skill in known_skills:
+        if skill.lower() in text_lower:
+            potential_skills.add(skill)
+
+    # 3. Normalize using fuzzy matching
+    normalized_skills = set()
+    for skill in potential_skills:
+        match = process.extractOne(skill, known_skills, scorer=fuzz.token_set_ratio)
+        if match and match[1] >= threshold:
+            normalized_skills.add(match[0])
+            
+    return sorted(list(normalized_skills))
 
 @app.post("/api/extract-cv")
-async def extract_cv(file: UploadFile = File(...)):
-    """
-    Extracts information from a CV.
-    - Extracts job title, years of experience, skills, tools, and project keywords.
-    - Normalizes skill names using fuzzy matching.
-    """
+async def extract_cv(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     content = await file.read()
 
-    text = ""
     if file.filename.endswith(".pdf"):
         text = extract_text_from_pdf(content)
     else:
         text = content.decode("utf-8")
 
-    doc = nlp(text)
-    matcher = Matcher(nlp.vocab)
+    anonymized_text, anonymization_map = anonymize_with_whitelist(text, WHITELIST)
+    sanitized = anonymized_text
+    try:
+        cv_json = await parse_cv_to_json(sanitized)
+    except Exception as e:
+        print(f"[Error] Failed to parse CV to JSON: {e}")
+        cv_json = {"error": f"Failed to parse CV to JSON"}
 
-    # Rule-based patterns for job titles
-    job_title_patterns = [
-        [{"POS": "NOUN", "OP": "+"}, {"LOWER": "developer"}],
-        [{"POS": "NOUN", "OP": "+"}, {"LOWER": "engineer"}],
-        [{"POS": "NOUN", "OP": "+"}, {"LOWER": "architect"}],
-    ]
-    matcher.add("JOB_TITLE", job_title_patterns)
+    # Use spaCy and RapidFuzz to extract and normalize skills as per the document
+    # This overrides or supplements the skills extracted by the LLM
+    skills_from_nlp = extract_and_normalize_skills(sanitized, KNOWN_SKILLS)
+    if "skills" in cv_json and isinstance(cv_json, dict):
+        cv_json["skills"] = skills_from_nlp
 
-    # Extract entities
-    entities = {
-        "job_title": [],
-        "years_of_experience": extract_years_of_experience(text),
-        "skills": [],
-        "tools": [],
-        "project_keywords": []
-    }
+    # Add background task to run after the response is sent
+    background_tasks.add_task(generate_interview_questions, cv_json)
 
-    matches = matcher(doc)
-    for match_id, start, end in matches:
-        span = doc[start:end]
-        entities["job_title"].append(span.text)
-
-    for ent in doc.ents:
-        if ent.label_ in ["SKILL", "TOOL", "ORG", "PRODUCT"]:
-            # Normalize skill/tool names
-            match, score, _ = process.extractOne(ent.text, KNOWN_SKILLS, scorer=fuzz.WRatio)
-            if score >= 80:  # Confidence threshold
-                if ent.label_ in ["SKILL", "ORG", "PRODUCT"]:
-                    entities["skills"].append(match)
-                else:
-                    entities["tools"].append(match)
-            else:
-                if ent.label_ in ["SKILL", "ORG", "PRODUCT"]:
-                    entities["skills"].append(ent.text)
-                else:
-                    entities["tools"].append(ent.text)
-
-    # Simple keyword extraction for projects
-    for token in doc:
-        if token.pos_ == "NOUN" and not token.is_stop and len(token.text) > 2:
-            entities["project_keywords"].append(token.lemma_)
-
-    # Remove duplicates
-    for key in entities:
-        entities[key] = list(set(entities[key]))
-
-    return entities
+    return cv_json
 
 
 @app.get("/api/data")
@@ -141,7 +307,7 @@ def read_root():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Vercel + FastAPI</title>
+        <title>FastAPI</title>
         <link rel="icon" type="image/x-icon" href="/favicon.ico">
         <style>
             * {
