@@ -12,6 +12,7 @@ import re
 from google import genai
 from openai import OpenAI
 from typing import Optional
+from datetime import datetime
 
 load_dotenv()
 
@@ -23,6 +24,14 @@ hg_client = OpenAI(
     base_url="https://router.huggingface.co/v1",
     api_key=os.environ["HF_TOKEN"],
 )
+
+DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+try:
+    from deepgram import DeepgramClient
+    deepgram_client = DeepgramClient(api_key=DEEPGRAM_API_KEY) if DEEPGRAM_API_KEY else None
+except Exception as e:
+    print(f"Warning: Deepgram client initialization failed: {e}")
+    deepgram_client = None
 
 MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", "50"))
 MIN_ANSWER_SENTENCES = int(os.getenv("MIN_ANSWER_SENTENCES", "2"))
@@ -51,12 +60,19 @@ class HistoryStore:
     async def set_last_cv_pdf_url(self, id: str, cv_pdf_url: Optional[str]) -> None:
         raise NotImplementedError
 
+    async def get_transcript(self, id: str) -> Optional[dict]:
+        raise NotImplementedError
+
+    async def set_transcript(self, id: str, transcript_data: dict) -> None:
+        raise NotImplementedError
+
 
 class MemoryHistoryStore(HistoryStore):
     def __init__(self) -> None:
         self.histories: dict[str, list[dict]] = {}
         self.last_cvs: dict[str, Optional[dict]] = {}
         self.last_cv_pdf_urls: dict[str, Optional[str]] = {}
+        self.transcripts: dict[str, dict] = {}
 
     async def get_history(self, id: str) -> list[dict]:
         return self.histories.get(id, [])
@@ -81,6 +97,12 @@ class MemoryHistoryStore(HistoryStore):
 
     async def set_last_cv_pdf_url(self, id: str, cv_pdf_url: Optional[str]) -> None:
         self.last_cv_pdf_urls[id] = cv_pdf_url
+
+    async def get_transcript(self, id: str) -> Optional[dict]:
+        return self.transcripts.get(id)
+
+    async def set_transcript(self, id: str, transcript_data: dict) -> None:
+        self.transcripts[id] = transcript_data
 
 
 class PostgresHistoryStore(HistoryStore):
@@ -116,6 +138,7 @@ class PostgresHistoryStore(HistoryStore):
             )
             last_cv: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
             last_cv_pdf_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+            transcript: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
             updated_at: Mapped[object] = mapped_column(
                 DateTime(timezone=True),
                 nullable=False,
@@ -220,6 +243,25 @@ class PostgresHistoryStore(HistoryStore):
                 row.last_cv_pdf_url = cv_pdf_url
             await db.commit()
 
+    async def get_transcript(self, id: str) -> Optional[dict]:
+        await self._ensure_initialized()
+        async with self.SessionLocal() as db:
+            row = await db.get(self.UserSession, id)
+            if not row:
+                return None
+            return row.transcript
+
+    async def set_transcript(self, id: str, transcript_data: dict) -> None:
+        await self._ensure_initialized()
+        async with self.SessionLocal() as db:
+            row = await db.get(self.UserSession, id)
+            if not row:
+                row = self.UserSession(id=id, history=[], last_cv=None, last_cv_pdf_url=None, transcript=transcript_data)
+                db.add(row)
+            else:
+                row.transcript = transcript_data
+            await db.commit()
+
 
 class MongoHistoryStore(HistoryStore):
     def __init__(self, mongo_uri: str, db_name: str, collection_name: str) -> None:
@@ -265,6 +307,15 @@ class MongoHistoryStore(HistoryStore):
 
     async def set_last_cv_pdf_url(self, id: str, cv_pdf_url: Optional[str]) -> None:
         self.collection.update_one({"_id": id}, {"$set": {"last_cv_pdf_url": cv_pdf_url}}, upsert=True)
+
+    async def get_transcript(self, id: str) -> Optional[dict]:
+        doc = self.collection.find_one({"_id": id}, {"transcript": 1})
+        if not doc:
+            return None
+        return doc.get("transcript")
+
+    async def set_transcript(self, id: str, transcript_data: dict) -> None:
+        self.collection.update_one({"_id": id}, {"$set": {"transcript": transcript_data}}, upsert=True)
 
 
 def init_history_store() -> HistoryStore:
@@ -552,6 +603,80 @@ async def last_cv_pdf_url(id: str = Query("default")):
         return {"error": "No CV PDF URL has been saved yet"}
     return {"id": id, "cv_pdf_url": cv_pdf_url}
 
+@app.post("/api/transcript")
+async def extract_transcript(
+    file: UploadFile = File(...),
+    id: str = Query("default"),
+):
+    if deepgram_client is None:
+        raise HTTPException(status_code=503, detail="Deepgram service is not configured")
+    
+    try:
+        audio_data = await file.read()
+        
+        response = deepgram_client.listen.v1.media.transcribe_file(
+            request=audio_data,
+            model="nova-3",
+            smart_format=True,
+        )
+        
+        transcript_text = response.results.channels[0].alternatives[0].transcript
+        
+        prompt = f"""
+        Extract from the transcript text all the question related to IT job which is Software Engineering, Frontend Dev, Backend Dev, Fullstack Dev, Business Analyst, Tester, etc.
+        Refine the question so it is grammatically correct.
+        Set the short name for question which is Problem Title to title, and the full description for the question which is Problem Statement as content both for the json array.
+        
+        Transcript:
+        {transcript_text}
+        
+        Output JSON only.
+        """
+        questions_list = []
+        try:
+            llm_response = hg_client.chat.completions.create(
+                model="meta-llama/Llama-3.1-8B-Instruct:novita",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            questions_list = json.loads(clean_json_string(llm_response.choices[0].message.content))
+        except Exception as e:
+            logging.error(f"Error extracting questions: {e}")
+
+        transcript_data = {
+            "text": transcript_text,
+            "timestamp": datetime.utcnow().isoformat(),
+            "filename": file.filename,
+            "user_id": id,
+            "metadata": {
+                "model": "nova-3",
+                "smart_format": True,
+            }
+        }
+        
+        await history_store.set_transcript(id, transcript_data)
+        
+        return {
+            "status": "success",
+            "transcript": transcript_text,
+            "question list": questions_list,
+        }
+    except Exception as e:
+        logging.error(f"Failed to extract transcript: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to extract transcript: {str(e)}")
+
+@app.get("/api/transcript")
+async def get_transcript(id: str = Query("default")):
+    try:
+        transcript_data = await history_store.get_transcript(id)
+        if transcript_data is None:
+            raise HTTPException(status_code=404, detail="Transcript not found")
+        return transcript_data
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to retrieve transcript: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to retrieve transcript: {str(e)}")
+
 @app.get("/api/history")
 async def interview_history(id: str = Query("default")):
     history = await history_store.get_history(id)
@@ -583,17 +708,17 @@ async def questioning(
         llm_messages = [{
             "role": "user",
             "content": f"""
-You are an AI interviewer.
-Ask exactly one question in one line.
-No explanation and no extra text.
-Use only the CV content.
-
-This is the first interview turn.
-Ask the candidate to briefly introduce themselves and explain their background for the applied role.
-
-CV:
-{last_parsed_cv}
-""",
+        You are an AI interviewer.
+        Ask exactly one question in one line.
+        No explanation and no extra text.
+        Use only the CV content.
+        
+        This is the first interview turn.
+        Ask the candidate to briefly introduce themselves and explain their background for the applied role.
+        
+        CV:
+        {last_parsed_cv}
+        """,
         }]
     else:
         is_valid, reasons = validate_candidate_answer(user_answer, previous_question)
@@ -601,44 +726,44 @@ CV:
             llm_messages = [{
                 "role": "user",
                 "content": f"""
-You are an AI interviewer.
-Ask exactly one question in one line.
-No explanation and no extra text.
-Stay on the SAME topic as the previous question.
-The latest answer is invalid, so ask the same question again or a close paraphrase.
-
-Invalid reason(s): {", ".join(reasons)}
-Previous question: {previous_question}
-Candidate answer: {user_answer}
-CV:
-{last_parsed_cv}
-""",
+            You are an AI interviewer.
+            Ask exactly one question in one line.
+            No explanation and no extra text.
+            Stay on the SAME topic as the previous question.
+            The latest answer is invalid, so ask the same question again or a close paraphrase.
+            
+            Invalid reason(s): {", ".join(reasons)}
+            Previous question: {previous_question}
+            Candidate answer: {user_answer}
+            CV:
+            {last_parsed_cv}
+            """,
             }]
         else:
             updated_history = await history_store.get_history(id)
             llm_messages = [{
                 "role": "user",
                 "content": f"""
-You are an AI interviewer conducting a structured interview.
-Ask exactly one question in one line.
-No explanation and no extra text.
-Use only information present in the CV. Do not invent data.
-
-Interview stages in strict order:
-1) Self introduction
-2) CV and experience
-3) Technical and problem solving
-4) Mindset and teamwork
-
-Move to the next suitable question based on the transcript.
-Increase difficulty gradually.
-
-CV:
-{last_parsed_cv}
-
-Transcript:
-{updated_history}
-""",
+            You are an AI interviewer conducting a structured interview.
+            Ask exactly one question in one line.
+            No explanation and no extra text.
+            Use only information present in the CV. Do not invent data.
+            
+            Interview stages in strict order:
+            1) Self introduction
+            2) CV and experience
+            3) Technical and problem solving
+            4) Mindset and teamwork
+            
+            Move to the next suitable question based on the transcript.
+            Increase difficulty gradually.
+            
+            CV:
+            {last_parsed_cv}
+            
+            Transcript:
+            {updated_history}
+            """,
             }]
 
     response = hg_client.chat.completions.create(

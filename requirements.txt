@@ -12,6 +12,7 @@ google-genai
 pymongo
 psycopg[binary]
 sqlalchemy
+deepgram-sdk
 #en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0.tar.gz
 #sentence-transformers
 #torch
