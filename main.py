@@ -11,8 +11,8 @@ import json
 import os
 import re
 from google import genai
-from openai import OpenAI
-from typing import Optional
+from openai import AsyncOpenAI
+from typing import Optional, List
 from datetime import datetime
 
 load_dotenv()
@@ -21,7 +21,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # The client gets the API key from the environment variable `GEMINI_API_KEY`.
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
-hg_client = OpenAI(
+hg_client = AsyncOpenAI(
     base_url="https://router.huggingface.co/v1",
     api_key=os.environ["HF_TOKEN"],
 )
@@ -45,6 +45,15 @@ class AssessmentRequest(BaseModel):
     domain: str
     selected_options: list[str]
     free_text: str
+
+class QuestionDto(BaseModel):
+    Title: str
+    Content: str
+    Id: Optional[str] = None
+
+class SimilarityCheckRequest(BaseModel):
+    SimilarMatchQuestionList: List[QuestionDto]
+    Question: QuestionDto
 
 class HistoryStore:
     async def get_history(self, id: str) -> list[dict]:
@@ -773,6 +782,7 @@ STEP 3 – PHASE B (TARGET)
         )
 
         data = json.loads(clean_json_string(response.text))
+        logging.info(f"LLM Assessment Response: {json.dumps(data, indent=2)}")
 
         if len(data.get("phaseA", [])) != 5:
             raise Exception("Invalid Phase A")
@@ -822,7 +832,8 @@ async def extract_transcript(
     try:
         audio_data = await file.read()
         
-        response = deepgram_client.listen.v1.media.transcribe_file(
+        response = await asyncio.to_thread(
+            deepgram_client.listen.v1.media.transcribe_file,
             request=audio_data,
             model="nova-3",
             smart_format=True,
@@ -845,7 +856,7 @@ async def extract_transcript(
         """
         questions_list = []
         try:
-            llm_response = hg_client.chat.completions.create(
+            llm_response = await hg_client.chat.completions.create(
                 model="meta-llama/Llama-3.1-8B-Instruct:novita",
                 messages=[{"role": "user", "content": prompt}]
             )
@@ -887,6 +898,48 @@ async def get_transcript(id: str = Query("default")):
     except Exception as e:
         logging.error(f"Failed to retrieve transcript: {e}")
         raise HTTPException(status_code=400, detail=f"Failed to retrieve transcript: {str(e)}")
+
+@app.post("/api/check-similarity")
+async def check_question_similarity(request: SimilarityCheckRequest):
+    existing_questions_text = "\n".join(
+        [f"{i+1}. Title: {q.Title} Content: {q.Content}" 
+         for i, q in enumerate(request.SimilarMatchQuestionList)]
+    )
+    
+    prompt = f"""
+    You are a technical interview question deduplication expert.
+    
+    Target Question:
+    Title: {request.Question.Title}
+    Content: {request.Question.Content}
+    
+    Existing Questions:
+    {existing_questions_text}
+    
+    Task: Check if the Target Question is semantically identical or a close duplicate of ANY of the Existing Questions. 
+    Focus on the core technical problem or concept being asked. Different wording but same intent means it is similar.
+    
+    If it is similar to any existing question, output strictly: {{}}
+    
+    If it represents a distinct or different problem, output the Target Question as JSON:
+    {{
+        "title": "{request.Question.Title}",
+        "content": "{request.Question.Content}"
+    }}
+    
+    Output JSON only.
+    """
+    
+    try:
+        response = await hg_client.chat.completions.create(
+            model="meta-llama/Llama-3.1-8B-Instruct:novita",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        result_json = json.loads(clean_json_string(response.choices[0].message.content))
+        return result_json
+    except Exception as e:
+        logging.error(f"Error checking similarity: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/history")
 async def interview_history(id: str = Query("default")):
@@ -977,7 +1030,7 @@ async def questioning(
             """,
             }]
 
-    response = hg_client.chat.completions.create(
+    response = await hg_client.chat.completions.create(
         model="meta-llama/Llama-3.1-8B-Instruct:novita",
         messages=llm_messages
     )
