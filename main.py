@@ -1,6 +1,7 @@
 import logging
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Query, HTTPException, Body
 from fastapi.responses import HTMLResponse, StreamingResponse
+from pydantic import BaseModel
 import fitz
 import pymupdf4llm
 import asyncio
@@ -37,6 +38,13 @@ MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", "50"))
 MIN_ANSWER_SENTENCES = int(os.getenv("MIN_ANSWER_SENTENCES", "2"))
 MIN_ANSWER_WORDS = int(os.getenv("MIN_ANSWER_WORDS", "12"))
 
+class AssessmentRequest(BaseModel):
+    role: str
+    level: str
+    techstack: str
+    domain: str
+    selected_options: list[str]
+    free_text: str
 
 class HistoryStore:
     async def get_history(self, id: str) -> list[dict]:
@@ -372,6 +380,48 @@ def clean_json_string(s: str) -> str:
             if brace_count == 0 and start_idx is not None:
                 # Extract substring and return
                 return s[start_idx:idx+1]
+        elif char == '[':
+            if brace_count == 0:
+                start_idx = idx
+            brace_count += 1
+        elif char == ']':
+            brace_count -= 1
+            if brace_count == 0 and start_idx is not None:
+                 return s[start_idx:idx+1]
+
+    # Fallback: return original string if no JSON found
+    return s
+
+def clean_json_array_string(s: str) -> str:
+    """
+    Extract the first top-level JSON object or array from a string.
+    Handles nested braces/brackets properly.
+    """
+
+    s = s.strip()
+    if s.startswith("```"):
+        s = re.sub(r"^```(?:json)?\s*", "", s)
+        s = re.sub(r"\s*```$", "", s)
+    s = s.strip()
+
+    if not s:
+        return "{}"
+
+    start_char = '{'
+    end_char = '}'
+    if s.startswith('['):
+        start_char = '['
+        end_char = ']'
+
+    count = 0
+
+    for idx, char in enumerate(s):
+        if char == start_char:
+            count += 1
+        elif char == end_char:
+            count -= 1
+            if count == 0:
+                return s[:idx+1]
 
     # Fallback: return original string if no JSON found
     return s
@@ -580,6 +630,164 @@ async def last_cv(id: str = Query("default")):
         return {"error": "No CV has been parsed yet"}
     return cv_json
 
+def is_empty_request(req: AssessmentRequest):
+    return (
+        req.role in ["", "string", None] and
+        req.level in ["", "string", None] and
+        req.techstack in ["", "string", None] and
+        req.free_text in ["", "string", None]
+    )
+
+@app.post("/api/generate-assessment")
+async def generate_assessment(request: AssessmentRequest):
+    try:
+        if is_empty_request(request):
+            return {
+                "status": "need_input",
+                "question": "What are you trying to achieve right now, and what do you feel you're missing?"
+            }
+
+        with open("skill-references.json", "r", encoding="utf-8") as f:
+            skill_reference = json.load(f)
+
+        skill_reference_str = json.dumps(skill_reference, indent=2)
+
+        prompt = f"""
+You are an intelligent technical interviewer inside a career development platform.
+
+Your job is to guide a new user through a short assessment to understand:
+1. Their CURRENT level (Phase A)
+2. Their TARGET expectations (Phase B)
+
+The user has just signed up and may not fully understand the system.
+
+-------------------------------------
+
+=== CONTEXT ===
+- The user is new
+- You must guide them step by step
+- Keep the conversation natural and simple
+- Do NOT overwhelm the user
+
+-------------------------------------
+
+=== SKILL REFERENCE ===
+{skill_reference_str}
+
+-------------------------------------
+
+    === INPUT (may be partial or empty) ===
+    Role: {request.role}
+    Level: {request.level}
+    TechStack: {request.techstack}
+    Domain: {request.domain}
+    User Intent: {request.free_text}
+
+-------------------------------------
+
+=== STRATEGY ===
+
+STEP 1 – CONTEXT QUESTION (MANDATORY)
+- Ask 1 natural, friendly question
+- Purpose: understand user's goal and background
+- Example tone:
+  "What are you trying to achieve right now?"
+  "Can you tell me a bit about your experience and what you're aiming for?"
+
+-------------------------------------
+
+STEP 2 – PHASE A (CURRENT LEVEL)
+- Generate exactly 5 questions
+- Each question must:
+  - Map to ONE skill from skill reference
+  - Focus on REAL experience (what user can do)
+- Questions must feel practical (not theoretical)
+- Each question has 4 options:
+  - None → no experience
+  - Basic → simple usage
+  - Intermediate → used in real projects
+  - Advanced → confident in real-world scenarios
+
+-------------------------------------
+
+STEP 3 – PHASE B (TARGET)
+- Generate exactly 5 questions
+- ONLY after Phase A
+- Each question must:
+  - Map to ONE skill from skill reference
+  - Ask what level user WANTS to reach
+- Each question has 4 options:
+  - Beginner
+  - Comfortable
+  - Confident
+  - Expert
+
+-------------------------------------
+
+=== IMPORTANT RULES ===
+
+- MUST only use skills from skill reference
+- DO NOT invent new skills
+- DO NOT duplicate skills across Phase A and Phase B
+- Questions must be short, clear, and practical
+- Tone must be friendly, not formal
+- Avoid technical jargon if possible
+- Make questions feel like a real conversation, not a survey form
+
+-------------------------------------
+
+=== OUTPUT FORMAT ===
+
+{{
+    "contextQuestion": "",
+    "phaseA": [
+        {{
+            "skill": "",
+            "question": "",
+            "options": [
+                {{ "text": "", "level": "None" }},
+                {{ "text": "", "level": "Basic" }},
+                {{ "text": "", "level": "Intermediate" }},
+                {{ "text": "", "level": "Advanced" }}
+            ]
+        }}
+    ],
+    "phaseB": [
+        {{
+            "skill": "",
+            "question": "",
+            "options": [
+                {{ "text": "", "level": "Beginner" }},
+                {{ "text": "", "level": "Comfortable" }},
+                {{ "text": "", "level": "Confident" }},
+                {{ "text": "", "level": "Expert" }}
+            ]
+        }}
+    ]
+}}
+"""
+
+        response = gemini_client.models.generate_content(
+            model="gemma-3-27b-it",
+            contents=prompt
+        )
+
+        data = json.loads(clean_json_string(response.text))
+
+        if len(data.get("phaseA", [])) != 5:
+            raise Exception("Invalid Phase A")
+
+        if len(data.get("phaseB", [])) != 5:
+            raise Exception("Invalid Phase B")
+
+        return {
+            "status": "success",
+            "assessment": data
+        }
+
+    except Exception as e:
+        logging.error(f"Error in generate_assessment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/last-cv-pdf-url")
 async def set_last_cv_pdf_url(
@@ -627,10 +835,13 @@ async def extract_transcript(
         Refine the question so it is grammatically correct.
         Set the short name for question which is Problem Title to title, and the full description for the question which is Problem Statement as content both for the json array.
         
+        IMPORTANT: For the 'content', provide only the question itself. Do not include the answer or any explanation.
+        
         Transcript:
         {transcript_text}
         
-        Output JSON only.
+        Output JSON only as an array of objects.
+        Example: [{{ "title": "Question Title", "content": "The refined question text?" }}]
         """
         questions_list = []
         try:
@@ -1120,4 +1331,3 @@ def read_root():
     </body>
     </html>
     """
-
