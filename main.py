@@ -49,7 +49,6 @@ class AssessmentRequest(BaseModel):
 class QuestionDto(BaseModel):
     Title: str
     Content: str
-    Id: Optional[str] = None
 
 class SimilarityCheckRequest(BaseModel):
     SimilarMatchQuestionList: List[QuestionDto]
@@ -916,8 +915,12 @@ async def check_question_similarity(request: SimilarityCheckRequest):
     Existing Questions:
     {existing_questions_text}
     
-    Task: Check if the Target Question is semantically identical or a close duplicate of ANY of the Existing Questions. 
-    Focus on the core technical problem or concept being asked. Different wording but same intent means it is similar.
+    Task: Check if the Target Question is semantically identical, a close variation, or a sub-problem of ANY of the Existing Questions.
+    
+    CRITICAL RULE:
+    - If the Target Question is a specific variation (e.g., "Reverse Linked List II") of a general existing question (e.g., "Reverse Linked List"), count it as SIMILAR/DUPLICATE.
+    - If the core algorithmic concept is the same, count it as SIMILAR.
+    - Only return the question if it is a completely NEW and UNRELATED problem.
     
     If it is similar to any existing question, output strictly: {{}}
     
