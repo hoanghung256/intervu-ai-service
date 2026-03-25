@@ -901,35 +901,38 @@ async def get_transcript(id: str = Query("default")):
 @app.post("/api/check-similarity")
 async def check_question_similarity(request: SimilarityCheckRequest):
     existing_questions_text = "\n".join(
-        [f"{i+1}. Title: {q.Title} Content: {q.Content}" 
+        [f"- Title: {q.Title}\n  Content: {q.Content}" 
          for i, q in enumerate(request.SimilarMatchQuestionList)]
     )
     
     prompt = f"""
-    You are a technical interview question deduplication expert.
-    
-    Target Question:
-    Title: {request.Question.Title}
-    Content: {request.Question.Content}
-    
-    Existing Questions:
+    You are a technical interview question deduplication expert. Your task is to determine if a new "Target Question" is a duplicate of any question in a list of "Existing Questions".
+
+    **Definition of Duplicate:**
+    A question is a duplicate if it:
+    1. Is semantically identical (same meaning, different words).
+    2. Is a direct variation or sub-problem (e.g., "Reverse Linked List II" is a variation of "Reverse Linked List").
+    3. Solves the exact same core algorithmic problem.
+
+    **Target Question:**
+    - Title: "{request.Question.Title}"
+    - Content: "{request.Question.Content}"
+
+    **Existing Questions:**
     {existing_questions_text}
-    
-    Task: Check if the Target Question is semantically identical, a close variation, or a sub-problem of ANY of the Existing Questions.
-    
-    CRITICAL RULE:
-    - If the Target Question is a specific variation (e.g., "Reverse Linked List II") of a general existing question (e.g., "Reverse Linked List"), count it as SIMILAR/DUPLICATE.
-    - If the core algorithmic concept is the same, count it as SIMILAR.
-    - Only return the question if it is a completely NEW and UNRELATED problem.
-    
-    If it is similar to any existing question, output strictly: {{}}
-    
-    If it represents a distinct or different problem, output the Target Question as JSON:
-    {{
-        "title": "{request.Question.Title}",
-        "content": "{request.Question.Content}"
-    }}
-    
+
+    **Your Task:**
+    Analyze the Target Question against the Existing Questions. Based on the definition above, is the Target Question a NEW, UNIQUE problem?
+
+    **Output Format:**
+    Respond with a JSON object containing a single boolean field "is_new".
+    - `{{ "is_new": false }}` if the Target Question is a duplicate.
+    - `{{ "is_new": true }}` if the Target Question is a new and unique problem.
+
+    **Example Analysis:**
+    - If Target is "Reverse a sublist of a linked list" and an Existing question is "Reverse a linked list", the Target is a variation. You should output `{{ "is_new": false }}`.
+    - If Target is "Find the k-th node from the end of a linked list" and the Existing questions are about reversing and merging lists, the Target is new. You should output `{{ "is_new": true }}`.
+
     Output JSON only.
     """
     
@@ -938,8 +941,16 @@ async def check_question_similarity(request: SimilarityCheckRequest):
             model="meta-llama/Llama-3.1-8B-Instruct:novita",
             messages=[{"role": "user", "content": prompt}]
         )
-        result_json = json.loads(clean_json_string(response.choices[0].message.content))
-        return result_json
+        llm_output = json.loads(clean_json_string(response.choices[0].message.content))
+        
+        if llm_output.get("is_new", False):
+            return {
+                "title": request.Question.Title,
+                "content": request.Question.Content
+            }
+        else:
+            return {{}}
+
     except Exception as e:
         logging.error(f"Error checking similarity: {e}")
         raise HTTPException(status_code=500, detail=str(e))
