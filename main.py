@@ -19,7 +19,7 @@ load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # The client gets the API key from the environment variable `GEMINI_API_KEY`.
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+gemini_client = genai.Client(api_key=GEMINI_API_KEY).aio
 
 hg_client = AsyncOpenAI(
     base_url="https://router.huggingface.co/v1",
@@ -527,7 +527,7 @@ Here is the CV text:
 \"\"\"{cv_text}\"\"\"
 """
 
-    response = gemini_client.models.generate_content(
+    response = await gemini_client.models.generate_content(
         model="gemma-3-27b-it",
         contents=prompt
     )
@@ -775,7 +775,7 @@ STEP 3 – PHASE B (TARGET)
 }}
 """
 
-        response = gemini_client.models.generate_content(
+        response = await gemini_client.models.generate_content(
             model="gemma-3-27b-it",
             contents=prompt
         )
@@ -938,11 +938,15 @@ async def check_question_similarity(request: SimilarityCheckRequest):
     """
     
     try:
-        response = await hg_client.chat.completions.create(
-            model="meta-llama/Llama-3.1-8B-Instruct:novita",
-            messages=[{"role": "user", "content": prompt}]
+        response = await gemini_client.models.generate_content(
+            model="gemma-3-27b-it",
+            contents=prompt
         )
-        llm_output = json.loads(clean_json_string(response.choices[0].message.content))
+        # response = await hg_client.chat.completions.create(
+        #     model="meta-llama/Llama-3.1-8B-Instruct:novita",
+        #     messages=[{"role": "user", "content": prompt}]
+        # )
+        llm_output = json.loads(clean_json_string(response.text))
         
         if llm_output.get("is_new", False):
             return {
