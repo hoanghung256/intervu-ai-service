@@ -1,3 +1,4 @@
+
 import logging
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Query, HTTPException, Body
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -363,13 +364,11 @@ history_store = init_history_store()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 app = FastAPI(
     title="FastAPI",
     description="FastAPI",
     version="1.0.0",
 )
-
 def clean_json_string(s: str) -> str:
     """
     Extract the first top-level JSON object from a string.
@@ -532,7 +531,6 @@ Here is the CV text:
         contents=[prompt]
     )
     structured_json = json.loads(clean_json_string(response.text))
-
     return structured_json
 
 # async def generate_interview_questions(cv_text: str):
@@ -827,19 +825,19 @@ async def extract_transcript(
 ):
     if deepgram_client is None:
         raise HTTPException(status_code=503, detail="Deepgram service is not configured")
-    
+
     try:
         audio_data = await file.read()
-        
+
         response = await asyncio.to_thread(
             deepgram_client.listen.v1.media.transcribe_file,
             request=audio_data,
             model="nova-3",
             smart_format=True,
         )
-        
+
         transcript_text = response.results.channels[0].alternatives[0].transcript
-        
+
         prompt = f"""
         Extract from the transcript text all the question related to IT job which is Software Engineering, Frontend Dev, Backend Dev, Fullstack Dev, Business Analyst, Tester, etc.
         Refine the question so it is grammatically correct.
@@ -873,9 +871,9 @@ async def extract_transcript(
                 "smart_format": True,
             }
         }
-        
+
         await history_store.set_transcript(id, transcript_data)
-        
+
         return {
             "status": "success",
             "transcript": transcript_text,
@@ -901,10 +899,10 @@ async def get_transcript(id: str = Query("default")):
 @app.post("/api/check-similarity")
 async def check_question_similarity(request: SimilarityCheckRequest):
     existing_questions_text = "\n".join(
-        [f"- Title: {q.Title}\n  Content: {q.Content}" 
+        [f"- Title: {q.Title}\n  Content: {q.Content}"
          for i, q in enumerate(request.SimilarMatchQuestionList)]
     )
-    
+
     # Improved Prompt using Chain of Thought (CoT) and structured reasoning
     prompt = f"""
     You are a technical interview question deduplication expert. Your task is to determine if a new "Target Question" is a duplicate of any question in a list of "Existing Questions".
@@ -942,7 +940,7 @@ async def check_question_similarity(request: SimilarityCheckRequest):
     ```
     (Or `{{ "is_new": true }}` if no duplicates found)
     """
-    
+
     try:
         logging.info(f"Full prompt: {prompt}")
         # response = await gemini_client.models.generate_content(
@@ -1415,3 +1413,10 @@ def read_root():
     </body>
     </html>
     """
+
+
+import uvicorn
+from api.api import create_app
+app = create_app()
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)

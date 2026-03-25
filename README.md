@@ -1,23 +1,15 @@
-## ⭐ Running Locally (Python + virtualenv + Uvicorn)
+# AI service serve main LLM + MCP
 
-You can run the FastAPI application locally using a Python virtual environment and Uvicorn.
+# Actice venv
+venv\Scripts\Activate.ps1
 
-### 1. Create and activate a virtual environment
-
-```terminal
-python -m venv venv
-source venv/bin/activate        # macOS / Linux
-# OR
-.\venv\Scripts\activate           # Windows
-```
-### 2. Install dependencies
-
-```terminal
+### Install dependencies (for the first time clone project)
 pip install -r requirements.txt
-```
 
-### 3. Run the FastAPI application with Uvicorn
+### Save dependencies
+pip freeze > requirements.txt
 
-```terminal
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
+# Run app
+python main.py
+or below command for auto hotload
+uvicorn api.api:create_app --host 0.0.0.0 --port 8000 --reload

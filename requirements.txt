@@ -14,11 +14,14 @@ psycopg[binary]
 sqlalchemy
 deepgram-sdk
 pydantic
-#en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0.tar.gz
-#sentence-transformers
-#torch
-#transformers
-#hf_xet
-#spacy==3.8.11
-#rapidfuzz
-#text-anonymizer
+annotated-doc
+annotated-types
+anyio
+click
+colorama
+h11
+idna
+pydantic_core
+starlette
+typing-inspection
+typing_extensions
