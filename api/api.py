@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api import inference_endpoints 
+from api.inference_endpoints import router
 
 def create_app():
     app = FastAPI()
@@ -13,5 +13,5 @@ def create_app():
         allow_headers=["*"],
     )
 
-    app.include_router(inference_endpoints.router)
+    app.include_router(router)
     return app

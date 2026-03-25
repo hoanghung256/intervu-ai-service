@@ -1,9 +1,49 @@
 from pydantic import BaseModel
-
+from typing import Optional, List, Dict
 
 class AskRequest(BaseModel):
     prompt: str
 
-
 class AnswerResponse(BaseModel):
     answer: str
+
+class AssessmentRequest(BaseModel):
+    role: str
+    level: str
+    techstack: str
+    domain: str
+    selected_options: list[str]
+    free_text: str
+
+class QuestionDto(BaseModel):
+    Title: str
+    Content: str
+
+class SimilarityCheckRequest(BaseModel):
+    SimilarMatchQuestionList: List[QuestionDto]
+    Question: QuestionDto
+
+class AssessmentResponse(BaseModel):
+    status: str
+    assessment: Optional[dict] = None
+    question: Optional[str] = None
+
+class CVResponse(BaseModel):
+    apply_for: Optional[dict] = None
+    skills: Optional[list] = None
+    languages: Optional[list] = None
+    experiences: Optional[list] = None
+    certifications: Optional[list] = None
+    error: Optional[str] = None
+
+class TranscriptResponse(BaseModel):
+    status: str
+    transcript: str
+    question_list: List[dict]
+
+class ExtractQuestionsRequest(BaseModel):
+    transcript_text: str
+
+class ExtractQuestionsResponse(BaseModel):
+    status: str
+    question_list: List[dict]

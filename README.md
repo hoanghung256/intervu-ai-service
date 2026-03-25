@@ -6,7 +6,7 @@ venv\Scripts\Activate.ps1
 ### Install dependencies (for the first time clone project)
 pip install -r requirements.txt
 
-### Save dependencies
+### Save dependencies for sync development environment
 pip freeze > requirements.txt
 
 # Run app
