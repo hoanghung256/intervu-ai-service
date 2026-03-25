@@ -913,6 +913,7 @@ async def check_question_similarity(request: SimilarityCheckRequest):
     1. Is semantically identical (same meaning, different words).
     2. Is a direct variation or sub-problem (e.g., "Reverse Linked List II" is a variation of "Reverse Linked List").
     3. Solves the exact same core algorithmic problem.
+    4. IMPORTANT: Questions that use the same data structure (e.g., Linked List) but solve different problems (e.g., 'reordering' vs. 'reversing') are NOT duplicates.
 
     **Target Question:**
     - Title: "{request.Question.Title}"
