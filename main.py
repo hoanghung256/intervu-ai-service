@@ -529,7 +529,7 @@ Here is the CV text:
 
     response = await gemini_client.models.generate_content(
         model="gemma-3-27b-it",
-        contents=prompt
+        contents=[prompt]
     )
     structured_json = json.loads(clean_json_string(response.text))
 
@@ -777,7 +777,7 @@ STEP 3 – PHASE B (TARGET)
 
         response = await gemini_client.models.generate_content(
             model="gemma-3-27b-it",
-            contents=prompt
+            contents=[prompt]
         )
 
         data = json.loads(clean_json_string(response.text))
@@ -905,6 +905,7 @@ async def check_question_similarity(request: SimilarityCheckRequest):
          for i, q in enumerate(request.SimilarMatchQuestionList)]
     )
     
+    # Improved Prompt using Chain of Thought (CoT) and structured reasoning
     prompt = f"""
     You are a technical interview question deduplication expert. Your task is to determine if a new "Target Question" is a duplicate of any question in a list of "Existing Questions".
 
@@ -923,38 +924,49 @@ async def check_question_similarity(request: SimilarityCheckRequest):
     {existing_questions_text}
 
     **Your Task:**
-    Analyze the Target Question against the Existing Questions. Based on the definition above, is the Target Question a NEW, UNIQUE problem?
+    1. Analyze the Target Question to understand its core algorithmic goal.
+    2. Iterate through EACH Existing Question and compare it with the Target Question.
+    3. For each comparison, briefly reason whether they are duplicates based on the definition.
+    4. Conclude with a final decision.
 
     **Output Format:**
-    Respond with a JSON object containing a single boolean field "is_new".
-    - `{{ "is_new": false }}` if the Target Question is a duplicate.
-    - `{{ "is_new": true }}` if the Target Question is a new and unique problem.
-
-    **Example Analysis:**
-    - If Target is "Reverse a sublist of a linked list" and an Existing question is "Reverse a linked list", the Target is a variation. You should output `{{ "is_new": false }}`.
-    - If Target is "Find the k-th node from the end of a linked list" and the Existing questions are about reversing and merging lists, the Target is new. You should output `{{ "is_new": true }}`.
-
-    Output JSON only.
+    Provide a brief reasoning block followed by the final JSON object.
+    
+    Example Output:
+    Reasoning:
+    - Target vs Question 1: Different because...
+    - Target vs Question 2: Duplicate because...
+    
+    ```json
+    {{ "is_new": false }}
+    ```
+    (Or `{{ "is_new": true }}` if no duplicates found)
     """
     
     try:
-        response = await gemini_client.models.generate_content(
-            model="gemma-3-27b-it",
-            contents=prompt
-        )
-        # response = await hg_client.chat.completions.create(
-        #     model="meta-llama/Llama-3.1-8B-Instruct:novita",
-        #     messages=[{"role": "user", "content": prompt}]
+        logging.info(f"Full prompt: {prompt}")
+        # response = await gemini_client.models.generate_content(
+        #     model="gemma-3-27b-it",
+        #     contents=[prompt]
         # )
-        llm_output = json.loads(clean_json_string(response.text))
-        
+
+        response = await hg_client.chat.completions.create(
+            model="meta-llama/Llama-3.1-8B-Instruct:novita",
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        # llm_output = json.loads(clean_json_string(response.text))
+        llm_output = json.loads(clean_json_string(response.choices[0].message.content))
+
+        logging.info(f"LLM Output: {response.choices[0].message.content}")
+
         if llm_output.get("is_new", False):
             return {
                 "title": request.Question.Title,
                 "content": request.Question.Content
             }
         else:
-            return {{}}
+            return {}
 
     except Exception as e:
         logging.error(f"Error checking similarity: {e}")
