@@ -34,6 +34,17 @@ class CVResponse(BaseModel):
     languages: Optional[list] = None
     experiences: Optional[list] = None
     certifications: Optional[list] = None
+    total_years_of_experience: Optional[float] = None
+    error: Optional[str] = None
+
+class JDResponse(BaseModel):
+    job_title: Optional[str] = None
+    must_have_skills: Optional[list] = None
+    nice_to_have_skills: Optional[list] = None
+    required_yoe: Optional[float] = None
+    core_responsibilities: Optional[list] = None
+    benefits: Optional[list] = None
+    company_culture: Optional[str] = None
     error: Optional[str] = None
 
 class TranscriptResponse(BaseModel):

@@ -17,27 +17,65 @@ class CVService:
         doc.close()
         return md
 
-    async def parse_cv_to_json(self, cv_text: str) -> dict:
-        prompt = f"""
+    async def parse_document_to_json(self, text: str, doc_type: str = "cv") -> dict:
+        if doc_type.lower() == "jd":
+            prompt = f"""
+You are a Job Description (JD) parsing assistant.
+Extract structured information from the JD and output it as a JSON object with the following format:
+{{
+  "job_title": "",
+  "must_have_skills": [],
+  "nice_to_have_skills": [],
+  "required_yoe": 0.0,
+  "core_responsibilities": [],
+  "benefits": [],
+  "company_culture": ""
+}}
+Rules:
+1. Extract the primary job title.
+2. Separate skills strictly into 'must_have_skills' and 'nice_to_have_skills'.
+3. Estimate 'required_yoe' (years of experience) as a float number (e.g. 2.5). If not mentioned, use 0.0.
+4. Output JSON only. No text outside JSON.
+
+JD text:
+\"\"\"{text}\"\"\"
+"""
+        else:
+            prompt = f"""
 You are a CV parsing assistant.
 Extract structured information from the CV and output it as a JSON object with the following format:
 {{
   "apply_for": {{"job_title": ""}},
   "skills": [],
   "languages": [],
-  "experiences": [],
-  "certifications": []
+  "experiences": [
+    {{
+      "company": "",
+      "title": "",
+      "dates": "",
+      "description": ""
+    }}
+  ],
+  "certifications": [],
+  "total_years_of_experience": 0.0
 }}
 Rules:
 1. Only include information explicitly mentioned in the CV.
 2. Preserve anonymized placeholders as-is.
- organizae experiences in chronological order, most recent first.
-3. Make JSON valid.
-4. Output JSON only. No text outside JSON.
+3. Organize experiences in chronological order, most recent first.
+4. Estimate 'total_years_of_experience' across all relevant roles as a float number (e.g. 3.5).
+5. Output JSON only. No text outside JSON.
 
 CV text:
-\"\"\"{cv_text}\"\"\"
+\"\"\"{text}\"\"\"
 """
         response_text = await self.llm_provider.generate_content(prompt, model="gemma-3-27b-it")
         cleaned_json = self.llm_provider.clean_json_string(response_text)
-        return json.loads(cleaned_json)
+        try:
+            return json.loads(cleaned_json)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"LLM returned invalid JSON. Raw output: '{response_text}'. Cleaned output: '{cleaned_json}'. Parse error: {e}")
+
+    # Keep backward compatibility if needed, though we will update the endpoint
+    async def parse_cv_to_json(self, cv_text: str) -> dict:
+        return await self.parse_document_to_json(cv_text, "cv")
