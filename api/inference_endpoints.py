@@ -10,6 +10,7 @@ from api.dtos import (
     CVResponse, JDResponse, TranscriptResponse, AskRequest, AnswerResponse,
     ExtractQuestionsRequest, ExtractQuestionsResponse
 )
+from api.roadmap_dto import RoadmapRequest, RoadmapResponse
 from infrastructure.model_provider.llm_provider import LLMProvider
 from infrastructure.repository.history_repository import HistoryRepository
 from infrastructure.repository.repository_factory import get_history_repository
@@ -18,6 +19,7 @@ from application.services.assessment_service import AssessmentService
 from application.services.interview_service import InterviewService
 from application.services.similarity_service import SimilarityService
 from application.services.transcript_service import TranscriptService
+from application.services.roadmap_service import RoadmapService
 from application.llm.inference_usecase import InferenceUseCase
 from domain.entities.query import Query as QueryEntity
 from infrastructure.external_services.deepgram_service import DeepgramService
@@ -48,6 +50,9 @@ def get_similarity_service(llm_provider: LLMProvider = Depends(get_llm_provider)
 
 def get_transcript_service(llm_provider: LLMProvider = Depends(get_llm_provider)) -> TranscriptService:
     return TranscriptService(llm_provider)
+
+def get_roadmap_service(llm_provider: LLMProvider = Depends(get_llm_provider)) -> RoadmapService:
+    return RoadmapService(llm_provider)
 
 def get_deepgram_service() -> DeepgramService:
     return DeepgramService()
@@ -187,6 +192,22 @@ async def extract_questions_endpoint(
         }
     except Exception as e:
         logging.error(f"Failed to extract questions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/generate-roadmap", response_model=RoadmapResponse)
+async def generate_roadmap(
+    request: RoadmapRequest,
+    roadmap_service: RoadmapService = Depends(get_roadmap_service)
+):
+    try:
+        roadmap_data = await roadmap_service.generate_roadmap(request)
+        return {"status": "success", "roadmap": roadmap_data}
+    except ValueError as e:
+        logging.error(f"Invalid roadmap output: {e}")
+        return {"status": "failed", "error": str(e)}
+    except Exception as e:
+        logging.error(f"Error in generate_roadmap: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/check-similarity")
