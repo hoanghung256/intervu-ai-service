@@ -1,0 +1,29 @@
+name: Deploy to DigitalOcean Droplet
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to Droplet
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.DROPLET_IP }}
+        username: deployer
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          cd /home/deployer/app
+          cat <<EOF > /home/deployer/app/.env
+          ${{ secrets.ENVIRONMENT_SECRET }}
+          EOF
+          git pull origin main
+          /home/deployer/venv/bin/pip install -r /home/deployer/app/requirements.txt
+          echo "${{ secrets.DEPLOYER_PASSWORD }}" | sudo -S systemctl restart fastapi.service
