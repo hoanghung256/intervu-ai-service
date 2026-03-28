@@ -2,12 +2,12 @@ import json
 import logging
 import re
 from datetime import datetime
-from typing import Optional, List
-from fastapi import APIRouter, Depends, UploadFile, File, Query, Body, HTTPException, BackgroundTasks
+from typing import Optional, List, Union
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, Body, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from api.dtos import (
     AssessmentRequest, AssessmentResponse, SimilarityCheckRequest, 
-    CVResponse, TranscriptResponse, AskRequest, AnswerResponse,
+    CVResponse, JDResponse, TranscriptResponse, AskRequest, AnswerResponse,
     ExtractQuestionsRequest, ExtractQuestionsResponse
 )
 from infrastructure.model_provider.llm_provider import LLMProvider
@@ -64,13 +64,18 @@ async def ask(payload: AskRequest, inference_usecase: InferenceUseCase = Depends
     return AnswerResponse(answer=result)
 
 
-@router.post("/extract-cv", response_model=CVResponse)
-async def extract_cv(
+@router.post("/extract-document", response_model=Union[CVResponse, JDResponse])
+async def extract_document(
     file: UploadFile = File(...),
+    doc_type: str = Form("cv"),
     id: str = Query("default"),
     cv_service: CVService = Depends(get_cv_service),
     history_repo: HistoryRepository = Depends(get_history_repo)
 ):
+    valid_types = ["cv", "jd"]
+    if doc_type.lower() not in valid_types:
+        raise HTTPException(status_code=400, detail=f"doc_type must be one of {valid_types}")
+
     content = await file.read()
     if file.filename.endswith(".pdf"):
         text = await cv_service.extract_text_from_pdf(content)
@@ -78,13 +83,17 @@ async def extract_cv(
         text = content.decode("utf-8")
 
     try:
-        cv_json = await cv_service.parse_cv_to_json(text)
-        await history_repo.set_last_cv(id, cv_json)
-        return cv_json
+        parsed_json = await cv_service.parse_document_to_json(text, doc_type)
+        if doc_type.lower() == "cv":
+            await history_repo.set_last_cv(id, parsed_json)
+        return parsed_json
     except Exception as e:
-        logging.error(f"Failed to parse CV to JSON: {e}")
-        await history_repo.set_last_cv(id, None)
-        return {"error": "Failed to parse CV to JSON"}
+        import traceback
+        logging.error(f"Failed to parse document to JSON: {e}")
+        logging.error(traceback.format_exc())
+        if doc_type.lower() == "cv":
+            await history_repo.set_last_cv(id, None)
+        return {"error": f"Failed to parse {doc_type} to JSON: {str(e)}"}
 
 @router.get("/last-cv")
 async def get_last_cv(id: str = Query("default"), history_repo: HistoryRepository = Depends(get_history_repo)):
