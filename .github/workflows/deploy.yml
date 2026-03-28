@@ -24,6 +24,6 @@ jobs:
           cat <<EOF > /home/deployer/app/.env
           ${{ secrets.ENVIRONMENT_SECRET }}
           EOF
-          git pull origin main
+          git pull origin master
           /home/deployer/venv/bin/pip install -r /home/deployer/app/requirements.txt
           echo "${{ secrets.DEPLOYER_PASSWORD }}" | sudo -S systemctl restart fastapi.service
