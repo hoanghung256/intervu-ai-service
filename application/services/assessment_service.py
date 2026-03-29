@@ -345,6 +345,6 @@ Example:
     ]
 }}
 """
-        response_text = await self.llm_provider.generate_content(prompt, model="gemini-2.0-flash")
+        response_text = await self.llm_provider.generate_content(prompt, model="gemini-2.5-flash")
         cleaned_json = self.llm_provider.clean_json_string(response_text)
         return json.loads(cleaned_json)
