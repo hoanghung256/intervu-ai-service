@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 
 class AskRequest(BaseModel):
     prompt: str
@@ -10,9 +10,9 @@ class AnswerResponse(BaseModel):
 class AssessmentRequest(BaseModel):
     role: str
     level: str
-    techstack: str
-    domain: str
-    selected_options: list[str]
+    techstack: Union[List[str], str]
+    domain: Union[List[str], str]
+    selected_options: List[str]
     free_text: str
 
 class QuestionDto(BaseModel):
@@ -27,6 +27,9 @@ class AssessmentResponse(BaseModel):
     status: str
     assessment: Optional[dict] = None
     question: Optional[str] = None
+    context_question: Optional[str] = None
+    phaseA: Optional[List[dict]] = None
+    phaseB: Optional[List[dict]] = None
 
 class CVResponse(BaseModel):
     apply_for: Optional[dict] = None

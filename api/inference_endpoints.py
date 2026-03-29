@@ -108,14 +108,19 @@ async def generate_assessment(
     assessment_service: AssessmentService = Depends(get_assessment_service)
 ):
     try:
-        if request.role in ["", "string", None] and request.level in ["", "string", None]:
+        if assessment_service.is_empty_request(request):
             return {
                 "status": "need_input",
-                "question": "What are you trying to achieve right now?"
+                "question": "What are you trying to achieve right now, and what do you feel you're missing?"
             }
 
         assessment_data = await assessment_service.generate_assessment(request)
-        return {"status": "success", "assessment": assessment_data}
+        return {
+            "status": "success",
+            "context_question": assessment_data.get("contextQuestion", ""),
+            "phaseA": assessment_data.get("phaseA", []),
+            "phaseB": assessment_data.get("phaseB", [])
+        }
     except Exception as e:
         logging.error(f"Error in generate_assessment: {e}")
         raise HTTPException(status_code=500, detail=str(e))
