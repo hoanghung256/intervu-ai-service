@@ -9,17 +9,22 @@ class TranscriptService:
 
     async def extract_questions_from_text(self, transcript_text: str) -> List[Dict]:
         prompt = f"""
-        Extract from the transcript text all the question related to IT job which is Software Engineering, Frontend Dev, Backend Dev, Fullstack Dev, Business Analyst, Tester, etc.
-        Refine the question so it is grammatically correct.
-        Set the short name for question which is Problem Title to title, and the full description for the question which is Problem Statement as content both for the json array.
+        Extract from the transcript text below all questions related to IT jobs (Software Engineering, Frontend Dev, Backend Dev, Fullstack Dev, Business Analyst, Tester, etc.).
         
-        IMPORTANT: For the 'content', provide only the question itself. Do not include the answer or any explanation.
-        
+        STRICT RULES:
+        1. ONLY extract questions that are actually present or implied in the provided Transcript.
+        2. If there are NO questions related to IT jobs in the Transcript, return an empty array: [].
+        3. DO NOT make up or hallucinate any questions that are not in the text.
+        4. Refine the extracted question so it is grammatically correct.
+        5. Set the short name for the question as 'title' and the full description as 'content'.
+        6. For the 'content', provide ONLY the question itself. Do not include answers or explanations.
+
         Transcript:
         {transcript_text}
         
         Output JSON only as an array of objects.
-        Example: [{{ "title": "Question Title", "content": "The refined question text?" }}]
+        Example if questions found: [{{ "title": "Question Title", "content": "The refined question text?" }}]
+        Example if no questions found: []
         """
         try:
             llm_response = await self.llm_provider.chat_completion(
