@@ -8,6 +8,7 @@ from api.dtos import AssessmentRequest
 class AssessmentService:
     def __init__(self, llm_provider: LLMProvider):
         self.llm_provider = llm_provider
+        self.logger = logging.getLogger(__name__)
 
     def is_empty_request(self, req: AssessmentRequest):
         def _empty(v):
@@ -346,7 +347,10 @@ Example:
 }}
 """
         response_text = await self.llm_provider.chat_completion(
-            messages=[{"role": "user", "content": prompt}])
-            # , model="gemini-2.5-flash")
+            messages=[{"role": "user", "content": prompt}]
+            , model="Qwen/Qwen3.5-9B:together")
+        
+        self.logger.info(f"LLM Response: {response_text['content']}")
+
         cleaned_json = self.llm_provider.clean_json_string(response_text["content"])
         return json.loads(cleaned_json)
