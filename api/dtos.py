@@ -12,7 +12,6 @@ class AssessmentRequest(BaseModel):
     level: str
     techstack: Union[List[str], str]
     domain: Union[List[str], str]
-    selected_options: List[str]
     free_text: str
 
 class QuestionDto(BaseModel):
