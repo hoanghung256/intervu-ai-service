@@ -12,7 +12,7 @@ class AssessmentRequest(BaseModel):
     level: Optional[str] = ""
     techstack: Optional[Union[List[str], str]] = None
     domain: Optional[Union[List[str], str]] = None
-    selected_options: Optional[List[str]] = Field(default_factory=list)
+    # selected_options: Optional[List[str]] = Field(default_factory=list)
     free_text: Optional[str] = None
 
     class Config:
