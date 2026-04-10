@@ -2,11 +2,13 @@ import fitz
 import pymupdf4llm
 import asyncio
 import json
+import logging
 from infrastructure.model_provider.llm_provider import LLMProvider
 
 class CVService:
     def __init__(self, llm_provider: LLMProvider):
         self.llm_provider = llm_provider
+        self.logger = logging.getLogger(__name__)
 
     async def extract_text_from_pdf(self, pdf_content: bytes) -> str:
         return await asyncio.to_thread(self._extract_text_layout_aware, pdf_content)
@@ -79,3 +81,65 @@ CV text:
     # Keep backward compatibility if needed, though we will update the endpoint
     async def parse_cv_to_json(self, cv_text: str) -> dict:
         return await self.parse_document_to_json(cv_text, "cv")
+
+    async def evaluate_cv(self, full_text: str) -> dict:
+        prompt = f"""
+You are an expert Career Coach and Technical Mentor.
+The following text contains a Job Description (JD) and a Candidate CV.
+Identify both parts, then conduct a qualitative evaluation and provide constructive feedback DIRECTLY to the candidate.
+
+=== DOCUMENT CONTENT ===
+{full_text}
+
+=== EVALUATION GUIDELINES ===
+1. summary: A concise (2-3 sentences) overview of YOUR professional profile relative to this role. You MUST use second-person pronouns (You, Your, Yours). DO NOT refer to yourself in the third person or by name.
+2. strengths: A list of YOUR key strengths and areas where you strongly match the job requirements.
+3. gaps: A list of areas where you could improve or skills you might need to acquire to be more competitive for this role. Use a supportive, coaching tone.
+4. reasoning: A detailed explanation of how this assessment was reached. Explain your match based on:
+   - Your technical skill alignment
+   - The depth and relevance of your past experiences
+   - Your seniority level match
+   - Your potential for growth or transferable skills
+5. final_verdict: A qualitative recommendation for YOUR fit. Choose one of:
+   - "Excellent Fit": You match or exceed almost all requirements.
+   - "Strong Fit": You match most core requirements with minor gaps.
+   - "Potential Fit": You have a solid foundation but may need specific training or more direct experience.
+   - "Not a Match": There are significant gaps between your current profile and this specific role's core requirements.
+
+=== CRITICAL RULES ===
+- Use ONLY "You", "Your", and "Yours" when referring to the candidate. 
+- NEVER use third-person names or "The candidate".
+- Output ONLY a JSON object.
+- DO NOT include any literal newlines or control characters inside the JSON strings. Use \\n if a newline is needed.
+- Double-check that the JSON is valid before responding.
+
+Output Structure:
+{{
+  "summary": "",
+  "strengths": [],
+  "gaps": [],
+  "reasoning": "",
+  "final_verdict": ""
+}}
+"""
+        response_text = await self.llm_provider.chat_completion(
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        content = response_text.get("content")
+        if not content:
+            self.logger.error("LLM returned an empty response for CV evaluation.")
+            raise ValueError("The AI model failed to generate an evaluation. Please try again or with a different model.")
+
+        self.logger.info(f"CV Evaluation LLM Response: {content}")
+        
+        cleaned_json = self.llm_provider.clean_json_string(content)
+        if not cleaned_json:
+            self.logger.error(f"Failed to find JSON in LLM response: {content}")
+            raise ValueError("The AI model returned text that did not contain a valid JSON evaluation.")
+
+        try:
+            return json.loads(cleaned_json)
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Failed to parse CV evaluation JSON: {e}. Cleaned output: {cleaned_json}")
+            raise ValueError(f"Failed to parse the AI model's evaluation. Error: {str(e)}")
