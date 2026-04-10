@@ -8,7 +8,8 @@ from fastapi.responses import HTMLResponse
 from api.dtos import (
     AssessmentRequest, AssessmentResponse, SimilarityCheckRequest, 
     CVResponse, JDResponse, TranscriptResponse, AskRequest, AnswerResponse,
-    ExtractQuestionsRequest, ExtractQuestionsResponse
+    ExtractQuestionsRequest, ExtractQuestionsResponse,
+    CvEvaluationResponse
 )
 from api.roadmap_dto import RoadmapRequest, RoadmapResponse
 from infrastructure.model_provider.llm_provider import LLMProvider
@@ -255,6 +256,27 @@ async def get_question(
 async def clear_history(id: str = Query("default"), history_repo: HistoryRepository = Depends(get_history_repo)):
     await history_repo.clear_history(id)
     return {"status": "success", "message": "History cleared"}
+
+@router.post("/evaluate-cv", response_model=CvEvaluationResponse)
+async def evaluate_cv_endpoint(
+    file: UploadFile = File(...),
+    cv_service: CVService = Depends(get_cv_service)
+):
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported for CV evaluation.")
+
+    try:
+        content = await file.read()
+        full_text = await cv_service.extract_text_from_pdf(content)
+        
+        evaluation = await cv_service.evaluate_cv(full_text)
+        return {
+            "status": "success",
+            **evaluation
+        }
+    except Exception as e:
+        logging.error(f"Error in evaluate_cv_endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/")
 def redirect():

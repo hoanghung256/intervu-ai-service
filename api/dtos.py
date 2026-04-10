@@ -68,3 +68,11 @@ class ExtractQuestionsRequest(BaseModel):
 class ExtractQuestionsResponse(BaseModel):
     status: str
     question_list: List[dict]
+    
+class CvEvaluationResponse(BaseModel):
+    status: str
+    summary: str
+    strengths: List[str]
+    gaps: List[str]
+    reasoning: str
+    final_verdict: str
