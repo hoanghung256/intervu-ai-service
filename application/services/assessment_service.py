@@ -2,7 +2,7 @@ import json
 import os
 import logging
 import re
-from typing import Union, List
+from typing import Union
 from infrastructure.model_provider.llm_provider import LLMProvider
 from api.dtos import AssessmentRequest
 
@@ -387,11 +387,20 @@ Example:
     ]
 }}
 """
-        response_text = await self.llm_provider.chat_completion(
-            messages=[{"role": "user", "content": prompt}]
-            , model="Qwen/Qwen3.5-9B:together")
-        
-        self.logger.info(f"LLM Response: {response_text['content']}")
+        response_text = await self.llm_provider.generate_content(
+            prompt=prompt,
+            model = "gemma-3-27b-it"
+        )
 
-        cleaned_json = self.llm_provider.clean_json_string(response_text["content"])
-        return json.loads(cleaned_json)
+        self.logger.info(f"LLM Response: {response_text}")
+
+        cleaned_json = self.llm_provider.clean_json_string(response_text)
+        data = json.loads(cleaned_json)
+
+        if len(data.get("phaseA", [])) != 15:
+            raise Exception("Invalid Phase A")
+
+        if len(data.get("phaseB", [])) != 5:
+            raise Exception("Invalid Phase B")
+
+        return data

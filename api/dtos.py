@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Union
 
 class AskRequest(BaseModel):
@@ -12,7 +12,8 @@ class AssessmentRequest(BaseModel):
     level: Optional[str] = ""
     techstack: Optional[Union[List[str], str]] = None
     domain: Optional[Union[List[str], str]] = None
-    free_text: Optional[str] = ""
+    selected_options: Optional[List[str]] = Field(default_factory=list)
+    free_text: Optional[str] = None
 
     class Config:
         @staticmethod
@@ -20,7 +21,7 @@ class AssessmentRequest(BaseModel):
             parts = string.split("_")
             return parts[0] + "".join(p.title() for p in parts[1:])
 
-        allow_population_by_field_name = True
+        validate_by_name = True
 
 class QuestionDto(BaseModel):
     Title: str
