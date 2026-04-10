@@ -1,9 +1,42 @@
 import json
 import os
 import logging
+import re
 from typing import Union, List
 from infrastructure.model_provider.llm_provider import LLMProvider
 from api.dtos import AssessmentRequest
+
+CONTRACTIONS = {
+    "i'm": "i am",
+    "i've": "i have",
+    "i'd": "i would",
+    "you're": "you are",
+    "we're": "we are",
+    "they're": "they are",
+    "it's": "it is",
+    "can't": "cannot",
+    "won't": "will not",
+    "don't": "do not",
+    "doesn't": "does not",
+    "isn't": "is not",
+    "aren't": "are not",
+    "couldn't": "could not",
+    "shouldn't": "should not",
+    "wouldn't": "would not",
+    "there's": "there is",
+    "that's": "that is",
+    "we've": "we have",
+    "they've": "they have",
+}
+CONTRACTIONS_PATTERN = re.compile(r"\b(" + "|".join(re.escape(k) for k in CONTRACTIONS.keys()) + r")\b", flags=re.IGNORECASE)
+
+def normalize_text(text: Union[str, None]) -> str:
+    if not text:
+        return ""
+    txt = str(text).replace("\u2019", "'").replace("\u2018", "'").replace("’", "'")
+    txt = CONTRACTIONS_PATTERN.sub(lambda m: CONTRACTIONS.get(m.group(0).lower(), m.group(0)), txt)
+    txt = re.sub(r"\s+", " ", txt).strip()
+    return txt
 
 class AssessmentService:
     def __init__(self, llm_provider: LLMProvider):
@@ -15,9 +48,13 @@ class AssessmentService:
             if v is None:
                 return True
             if isinstance(v, str):
-                return v.strip() == "" or v == "string"
+                s = normalize_text(v)
+                return s == "" or s.lower() == "string"
             if isinstance(v, (list, tuple)):
-                return all((not str(x).strip() or str(x) == "string") for x in v)
+                def _elem_empty(x):
+                    nx = normalize_text(x)
+                    return not nx or nx.lower() == "string"
+                return all(_elem_empty(x) for x in v)
             return False
 
         return (
@@ -34,12 +71,16 @@ class AssessmentService:
 
         skill_reference_str = json.dumps(skill_reference, indent=2)
 
+        # normalize free text using module-level helper
+
         techstack_str = (
             ", ".join(request.techstack) if isinstance(request.techstack, (list, tuple)) else (request.techstack or "")
         )
         domain_str = (
             ", ".join(request.domain) if isinstance(request.domain, (list, tuple)) else (request.domain or "")
         )
+
+        free_text_normalized = normalize_text(request.free_text)
 
         prompt = f"""
 You are an intelligent technical interviewer inside a career development platform.
@@ -74,7 +115,7 @@ Role: {request.role}
 Level: {request.level}
 TechStack: {techstack_str}
 Domain: {domain_str}
-User Intent: {request.free_text}
+User Intent: {free_text_normalized}
 
 -------------------------------------
 

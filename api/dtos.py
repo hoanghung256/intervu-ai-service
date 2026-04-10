@@ -8,11 +8,19 @@ class AnswerResponse(BaseModel):
     answer: str
 
 class AssessmentRequest(BaseModel):
-    role: str
-    level: str
-    techstack: Union[List[str], str]
-    domain: Union[List[str], str]
-    free_text: str
+    role: Optional[str] = ""
+    level: Optional[str] = ""
+    techstack: Optional[Union[List[str], str]] = None
+    domain: Optional[Union[List[str], str]] = None
+    free_text: Optional[str] = ""
+
+    class Config:
+        @staticmethod
+        def alias_generator(string: str) -> str:
+            parts = string.split("_")
+            return parts[0] + "".join(p.title() for p in parts[1:])
+
+        allow_population_by_field_name = True
 
 class QuestionDto(BaseModel):
     Title: str
