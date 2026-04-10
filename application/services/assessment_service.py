@@ -1,9 +1,42 @@
 import json
 import os
 import logging
+import re
 from typing import Union, List
 from infrastructure.model_provider.llm_provider import LLMProvider
 from api.dtos import AssessmentRequest
+
+CONTRACTIONS = {
+    "i'm": "i am",
+    "i've": "i have",
+    "i'd": "i would",
+    "you're": "you are",
+    "we're": "we are",
+    "they're": "they are",
+    "it's": "it is",
+    "can't": "cannot",
+    "won't": "will not",
+    "don't": "do not",
+    "doesn't": "does not",
+    "isn't": "is not",
+    "aren't": "are not",
+    "couldn't": "could not",
+    "shouldn't": "should not",
+    "wouldn't": "would not",
+    "there's": "there is",
+    "that's": "that is",
+    "we've": "we have",
+    "they've": "they have",
+}
+CONTRACTIONS_PATTERN = re.compile(r"\b(" + "|".join(re.escape(k) for k in CONTRACTIONS.keys()) + r")\b", flags=re.IGNORECASE)
+
+def normalize_text(text: Union[str, None]) -> str:
+    if not text:
+        return ""
+    txt = str(text).replace("\u2019", "'").replace("\u2018", "'").replace("’", "'")
+    txt = CONTRACTIONS_PATTERN.sub(lambda m: CONTRACTIONS.get(m.group(0).lower(), m.group(0)), txt)
+    txt = re.sub(r"\s+", " ", txt).strip()
+    return txt
 
 class AssessmentService:
     def __init__(self, llm_provider: LLMProvider):
@@ -15,10 +48,13 @@ class AssessmentService:
             if v is None:
                 return True
             if isinstance(v, str):
-                s = str(v).replace("\u2019", "'").replace("\u2018", "'").strip()
+                s = normalize_text(v)
                 return s == "" or s.lower() == "string"
             if isinstance(v, (list, tuple)):
-                return all((not str(x).strip() or str(x) == "string") for x in v)
+                def _elem_empty(x):
+                    nx = normalize_text(x)
+                    return not nx or nx.lower() == "string"
+                return all(_elem_empty(x) for x in v)
             return False
 
         return (
@@ -35,42 +71,7 @@ class AssessmentService:
 
         skill_reference_str = json.dumps(skill_reference, indent=2)
 
-        def _normalize_free_text(text: Union[str, None]) -> str:
-            if not text:
-                return ""
-            txt = str(text).replace("\u2019", "'").replace("\u2018", "'").replace("’", "'")
-            contractions = {
-                "i'm": "i am",
-                "i've": "i have",
-                "i'd": "i would",
-                "you're": "you are",
-                "we're": "we are",
-                "they're": "they are",
-                "it's": "it is",
-                "can't": "cannot",
-                "won't": "will not",
-                "don't": "do not",
-                "doesn't": "does not",
-                "isn't": "is not",
-                "aren't": "are not",
-                "couldn't": "could not",
-                "shouldn't": "should not",
-                "wouldn't": "would not",
-                "there's": "there is",
-                "that's": "that is",
-                "we've": "we have",
-                "they've": "they have",
-            }
-            import re
-
-            def _replace(match):
-                key = match.group(0).lower()
-                return contractions.get(key, match.group(0))
-
-            pattern = re.compile(r"\b(" + "|".join(re.escape(k) for k in contractions.keys()) + r")\b", flags=re.IGNORECASE)
-            txt = pattern.sub(_replace, txt)
-            txt = re.sub(r"\s+", " ", txt).strip()
-            return txt
+        # normalize free text using module-level helper
 
         techstack_str = (
             ", ".join(request.techstack) if isinstance(request.techstack, (list, tuple)) else (request.techstack or "")
@@ -79,7 +80,7 @@ class AssessmentService:
             ", ".join(request.domain) if isinstance(request.domain, (list, tuple)) else (request.domain or "")
         )
 
-        free_text_normalized = _normalize_free_text(request.free_text)
+        free_text_normalized = normalize_text(request.free_text)
 
         prompt = f"""
 You are an intelligent technical interviewer inside a career development platform.

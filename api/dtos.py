@@ -8,11 +8,11 @@ class AnswerResponse(BaseModel):
     answer: str
 
 class AssessmentRequest(BaseModel):
-    role: str
-    level: str
-    techstack: Union[List[str], str]
-    domain: Union[List[str], str]
-    free_text: str
+    role: Optional[str] = ""
+    level: Optional[str] = ""
+    techstack: Optional[Union[List[str], str]] = None
+    domain: Optional[Union[List[str], str]] = None
+    free_text: Optional[str] = ""
 
     class Config:
         @staticmethod
