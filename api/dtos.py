@@ -14,6 +14,14 @@ class AssessmentRequest(BaseModel):
     domain: Union[List[str], str]
     free_text: str
 
+    class Config:
+        @staticmethod
+        def alias_generator(string: str) -> str:
+            parts = string.split("_")
+            return parts[0] + "".join(p.title() for p in parts[1:])
+
+        allow_population_by_field_name = True
+
 class QuestionDto(BaseModel):
     Title: str
     Content: str
