@@ -41,7 +41,6 @@ def normalize_text(text: Union[str, None]) -> str:
 class AssessmentService:
     def __init__(self, llm_provider: LLMProvider):
         self.llm_provider = llm_provider
-        self.logger = logging.getLogger(__name__)
 
     def is_empty_request(self, req: AssessmentRequest):
         def _empty(v):
@@ -65,13 +64,17 @@ class AssessmentService:
         )
 
     async def generate_assessment(self, request: AssessmentRequest):
+        logging.info(f"Generating assessment for role: {request.role}, level: {request.level}")
+        
         skill_reference_path = os.path.join(os.getcwd(), "skill-references.json")
-        with open(skill_reference_path, "r", encoding="utf-8") as f:
-            skill_reference = json.load(f)
+        try:
+            with open(skill_reference_path, "r", encoding="utf-8") as f:
+                skill_reference = json.load(f)
+        except Exception as e:
+            logging.error(f"Failed to load skill-references.json: {e}")
+            raise
 
         skill_reference_str = json.dumps(skill_reference, indent=2)
-
-        # normalize free text using module-level helper
 
         techstack_str = (
             ", ".join(request.techstack) if isinstance(request.techstack, (list, tuple)) else (request.techstack or "")

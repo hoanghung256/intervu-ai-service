@@ -7,7 +7,14 @@ class TranscriptService:
     def __init__(self, llm_provider: LLMProvider):
         self.llm_provider = llm_provider
 
-    async def extract_questions_from_text(self, transcript_text: str) -> List[Dict]:
+    async def extract_questions_from_text(self, transcript_text: str, tags: List[str] = None) -> List[Dict]:
+        tags_instruction = ""
+        if tags and len(tags) > 0:
+            tags_instruction = f"""
+        7. TAGGING: Assign relevant tags to each question ONLY from the following list: {", ".join(tags)}. 
+           If no tags from the list are relevant, provide an empty array [].
+        """
+
         prompt = f"""
         You are an expert technical AI specializing in creating interview question banks. 
         Analyze the transcript and extract professional, self-contained questions and tasks.
@@ -25,13 +32,15 @@ class TranscriptService:
            - "sequel" -> "SQL"
            - "b efs" -> "BFS"
         6. IGNORE FILLER: Skip "Okay", "Thank you", "Let's move on", "jump into it", etc.
+        {tags_instruction}
 
         OUTPUT FORMAT:
         Return a JSON array of objects:
         [
           {{
             "title": "Specific Categorical Title",
-            "content": "Professional, self-contained technical question"
+            "content": "Professional, self-contained technical question",
+            "tags": ["Tag1", "Tag2"]
           }}
         ]
 

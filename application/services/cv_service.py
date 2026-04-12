@@ -8,7 +8,6 @@ from infrastructure.model_provider.llm_provider import LLMProvider
 class CVService:
     def __init__(self, llm_provider: LLMProvider):
         self.llm_provider = llm_provider
-        self.logger = logging.getLogger(__name__)
 
     async def extract_text_from_pdf(self, pdf_content: bytes) -> str:
         return await asyncio.to_thread(self._extract_text_layout_aware, pdf_content)
@@ -128,18 +127,18 @@ Output Structure:
         
         content = response_text.get("content")
         if not content:
-            self.logger.error("LLM returned an empty response for CV evaluation.")
+            logging.error("LLM returned an empty response for CV evaluation.")
             raise ValueError("The AI model failed to generate an evaluation. Please try again or with a different model.")
 
-        self.logger.info(f"CV Evaluation LLM Response: {content}")
+        logging.info(f"CV Evaluation LLM Response: {content}")
         
         cleaned_json = self.llm_provider.clean_json_string(content)
         if not cleaned_json:
-            self.logger.error(f"Failed to find JSON in LLM response: {content}")
+            logging.error(f"Failed to find JSON in LLM response: {content}")
             raise ValueError("The AI model returned text that did not contain a valid JSON evaluation.")
 
         try:
             return json.loads(cleaned_json)
         except json.JSONDecodeError as e:
-            self.logger.error(f"Failed to parse CV evaluation JSON: {e}. Cleaned output: {cleaned_json}")
+            logging.error(f"Failed to parse CV evaluation JSON: {e}. Cleaned output: {cleaned_json}")
             raise ValueError(f"Failed to parse the AI model's evaluation. Error: {str(e)}")
