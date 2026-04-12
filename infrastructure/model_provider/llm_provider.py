@@ -30,6 +30,7 @@ class LLMProvider:
                 self.hg_client = AsyncOpenAI(
                     base_url="https://router.huggingface.co/v1",
                     api_key=hf_token,
+                    timeout=90.0,
                 )
             except Exception as e:
                 logging.error(f"Failed to initialize HuggingFace client: {e}")
@@ -39,15 +40,31 @@ class LLMProvider:
             self.hg_client = None
 
     async def generate_content(self, prompt: str, model: Optional[str] = None) -> str:
+        # Fallback to HuggingFace if Gemini is not available or if explicitly requested
+        if self.hg_client:
+            model = model or "meta-llama/Llama-3.1-8B-Instruct:novita"
+            try:
+                response = await self.hg_client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                logging.error(f"HuggingFace generation failed: {e}")
+
         if not self.gemini_client:
-            return "Gemini service is currently unavailable (API key missing or invalid)."
+            return "LLM service is currently unavailable (HF_TOKEN and GEMINI_API_KEY missing or invalid)."
         
         model = model or self.model_name
-        response = await self.gemini_client.models.generate_content(
-            model=model,
-            contents=[prompt]
-        )
-        return response.text
+        try:
+            response = await self.gemini_client.models.generate_content(
+                model=model,
+                contents=[prompt]
+            )
+            return response.text
+        except Exception as e:
+            logging.error(f"Gemini generation failed: {e}")
+            return "LLM service is currently unavailable (both HuggingFace and Gemini requests failed)."
 
     async def chat_completion(self, messages: List[Dict], model: str = "meta-llama/Llama-3.1-8B-Instruct:novita") -> Dict:
         if not self.hg_client:
@@ -67,22 +84,43 @@ class LLMProvider:
 
     @staticmethod
     def clean_json_string(s: str) -> str:
+        if not s:
+            return ""
+
         s = s.strip()
         if s.startswith("```"):
             s = re.sub(r"^```(?:json)?\s*", "", s)
             s = re.sub(r"\s*```$", "", s)
         s = s.strip()
 
-        brace_count = 0
+        stack = []
         start_idx = None
 
         for idx, char in enumerate(s):
             if char in '{[':
-                if brace_count == 0:
+                if not stack:
                     start_idx = idx
-                brace_count += 1
+                stack.append(char)
             elif char in '}]':
-                brace_count -= 1
-                if brace_count == 0 and start_idx is not None:
-                    return s[start_idx:idx+1]
+                if stack:
+                    top = stack[-1]
+                    if (char == '}' and top == '{') or (char == ']' and top == '['):
+                        stack.pop()
+                    else:
+                        continue
+
+                    if not stack and start_idx is not None:
+                        return s[start_idx:idx+1]
+
+        # Fallback: try broad object slice if model returns extra text around JSON.
+        first_obj = s.find("{")
+        last_obj = s.rfind("}")
+        if first_obj != -1 and last_obj != -1 and last_obj > first_obj:
+            return s[first_obj:last_obj + 1]
+
+        first_arr = s.find("[")
+        last_arr = s.rfind("]")
+        if first_arr != -1 and last_arr != -1 and last_arr > first_arr:
+            return s[first_arr:last_arr + 1]
+
         return s
