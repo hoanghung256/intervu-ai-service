@@ -2,7 +2,7 @@ import json
 import os
 import logging
 import re
-from typing import Union
+from typing import Any, Dict, List, Set, Union
 from infrastructure.model_provider.llm_provider import LLMProvider
 from api.dtos import AssessmentRequest
 
@@ -39,9 +39,177 @@ def normalize_text(text: Union[str, None]) -> str:
     return txt
 
 class AssessmentService:
+    _skill_reference = None
+    PHASE_A_LEVELS = ["None", "Basic", "Intermediate", "Advanced"]
+    PHASE_B_LEVELS = ["Beginner", "Comfortable", "Confident", "Expert"]
+
     def __init__(self, llm_provider: LLMProvider):
         self.llm_provider = llm_provider
         self.logger = logging.getLogger(__name__)
+
+    @classmethod
+    def _load_skill_reference(cls):
+        if cls._skill_reference is None:
+            path = os.path.join(os.getcwd(), "skill-references.json")
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    cls._skill_reference = json.load(f)
+            except Exception as e:
+                logging.error(f"Failed to load skill-references.json: {e}")
+                cls._skill_reference = []
+        return cls._skill_reference
+
+    @staticmethod
+    def _to_list(value: Any) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple)):
+            return [str(v).strip() for v in value if str(v).strip()]
+        txt = str(value).strip()
+        return [txt] if txt else []
+
+    def _build_skill_source_for_prompt(self, request: AssessmentRequest, skill_reference: Any) -> List[Dict[str, str]]:
+        if not isinstance(skill_reference, list):
+            return []
+
+        role = normalize_text(request.role).lower()
+        tech_items = [t.lower() for t in self._to_list(request.techstack)]
+
+        target_categories: Set[str] = set()
+        if any(k in role for k in ["front", "ui", "web"]):
+            target_categories.update(["Frontend", "Fullstack"])
+        if any(k in role for k in ["back", "api", "server"]):
+            target_categories.update(["Backend", "Fullstack"])
+        if any(k in role for k in ["data", "ml", "ai"]):
+            target_categories.update(["Data", "AI"])
+        if any(k in role for k in ["devops", "infra", "platform", "sre"]):
+            target_categories.update(["DevOps"])
+        if any(k in role for k in ["mobile", "android", "ios"]):
+            target_categories.update(["Mobile"])
+        if any(k in role for k in ["qa", "test"]):
+            target_categories.update(["QA", "Testing"])
+
+        for tech in tech_items:
+            if any(k in tech for k in ["react", "angular", "vue", "typescript", "javascript", "html", "css"]):
+                target_categories.update(["Frontend", "Fullstack"])
+            if any(k in tech for k in ["node", "java", "python", "dotnet", "c#", "go", "postgres", "mysql", "mongo", "redis", "sql"]):
+                target_categories.update(["Backend", "Fullstack", "Data"])
+
+        compact_all = [
+            {
+                "name": str(item.get("name", "")).strip(),
+                "category": str(item.get("category", "General")).strip() or "General",
+            }
+            for item in skill_reference
+            if isinstance(item, dict) and str(item.get("name", "")).strip()
+        ]
+
+        if not compact_all:
+            return []
+
+        if not target_categories:
+            return compact_all[:40]
+
+        matched = [s for s in compact_all if s.get("category") in target_categories]
+        if len(matched) < 20:
+            needed = 40 - len(matched)
+            extras = [s for s in compact_all if s not in matched][:max(0, needed)]
+            matched.extend(extras)
+        return matched[:40]
+
+    @staticmethod
+    def _normalize_options(raw_options: Any, levels: List[str]) -> List[Dict[str, str]]:
+        level_index = {lvl.lower(): i for i, lvl in enumerate(levels)}
+        by_level: List[str] = [""] * len(levels)
+
+        if isinstance(raw_options, list):
+            for idx, opt in enumerate(raw_options):
+                if not isinstance(opt, dict):
+                    continue
+                text = normalize_text(opt.get("text"))
+                lvl = normalize_text(opt.get("level")).lower()
+                if lvl in level_index:
+                    by_level[level_index[lvl]] = text or by_level[level_index[lvl]]
+                elif idx < len(by_level) and text and not by_level[idx]:
+                    by_level[idx] = text
+
+        return [
+            {
+                "text": by_level[i] or f"Can demonstrate {levels[i].lower()} capability in this scenario.",
+                "level": levels[i],
+            }
+            for i in range(len(levels))
+        ]
+
+    @staticmethod
+    def _fallback_question(skill: str, techstack_str: str, phase: str) -> str:
+        if phase == "phaseA":
+            return f"In a {techstack_str or 'project'} task, how would you apply {skill} to deliver a working feature?"
+        return f"For your next growth step in {techstack_str or 'this stack'}, how would you strengthen {skill} in a real production scenario?"
+
+    def _normalize_phase(
+        self,
+        items: Any,
+        target_count: int,
+        levels: List[str],
+        fallback_skills: List[str],
+        techstack_str: str,
+        phase: str,
+        avoid_skills: Set[str],
+    ) -> List[Dict[str, Any]]:
+        normalized: List[Dict[str, Any]] = []
+        seen_questions: Set[str] = set()
+        available_skills = [s for s in fallback_skills if s and s not in avoid_skills] or fallback_skills or ["Problem Solving"]
+        skill_cursor = 0
+
+        raw_items = items if isinstance(items, list) else []
+        for raw in raw_items:
+            if not isinstance(raw, dict):
+                continue
+
+            skill = normalize_text(raw.get("skill"))
+            question = normalize_text(raw.get("question"))
+            if not skill:
+                skill = available_skills[skill_cursor % len(available_skills)]
+                skill_cursor += 1
+            if not question:
+                question = self._fallback_question(skill, techstack_str, phase)
+            if question in seen_questions:
+                continue
+
+            if phase == "phaseB" and skill in avoid_skills:
+                replacement_candidates = [s for s in available_skills if s not in avoid_skills]
+                if replacement_candidates:
+                    skill = replacement_candidates[skill_cursor % len(replacement_candidates)]
+                    skill_cursor += 1
+
+            normalized.append(
+                {
+                    "skill": skill,
+                    "question": question,
+                    "options": self._normalize_options(raw.get("options"), levels),
+                }
+            )
+            seen_questions.add(question)
+            if len(normalized) >= target_count:
+                return normalized
+
+        while len(normalized) < target_count:
+            skill = available_skills[skill_cursor % len(available_skills)]
+            skill_cursor += 1
+            question = self._fallback_question(skill, techstack_str, phase)
+            if question in seen_questions:
+                question = f"{question} (Focus area {len(normalized) + 1})"
+            normalized.append(
+                {
+                    "skill": skill,
+                    "question": question,
+                    "options": self._normalize_options([], levels),
+                }
+            )
+            seen_questions.add(question)
+
+        return normalized
 
     def is_empty_request(self, req: AssessmentRequest):
         def _empty(v):
@@ -67,15 +235,9 @@ class AssessmentService:
     async def generate_assessment(self, request: AssessmentRequest):
         logging.info(f"Generating assessment for role: {request.role}, level: {request.level}")
         
-        skill_reference_path = os.path.join(os.getcwd(), "skill-references.json")
-        try:
-            with open(skill_reference_path, "r", encoding="utf-8") as f:
-                skill_reference = json.load(f)
-        except Exception as e:
-            logging.error(f"Failed to load skill-references.json: {e}")
-            raise
-
-        skill_reference_str = json.dumps(skill_reference, indent=2)
+        skill_reference = self._load_skill_reference()
+        skill_source = self._build_skill_source_for_prompt(request, skill_reference)
+        skill_reference_str = json.dumps(skill_source, separators=(",", ":"), ensure_ascii=False)
 
         techstack_str = (
             ", ".join(request.techstack) if isinstance(request.techstack, (list, tuple)) else (request.techstack or "")
@@ -87,88 +249,33 @@ class AssessmentService:
         free_text_normalized = normalize_text(request.free_text)
 
         prompt = f"""
-ROLE
-You are a technical interviewer in a career development platform.
+Return ONE valid JSON object only.
 
-OBJECTIVE
-Generate one personalized assessment that measures:
-1. Current capability (phaseA)
-2. Target capability (phaseB)
+Input:
+- role: {request.role}
+- level: {request.level}
+- techstack: {techstack_str}
+- domain: {domain_str}
+- user_intent: {free_text_normalized}
 
-INPUT
-- Role: {request.role}
-- Level: {request.level}
-- TechStack: {techstack_str}
-- Domain: {domain_str}
-- User Intent: {free_text_normalized}
-
-SKILL SOURCE (ONLY ALLOWED SOURCE)
+Allowed skills (name/category only):
 {skill_reference_str}
 
-STRICT CONSTRAINTS
-1. Total questions must be exactly 20.
-2. phaseA must contain exactly 15 items.
-3. phaseB must contain exactly 5 items.
-4. Return exactly one valid JSON object and nothing else.
-5. Do not use markdown code fences.
-6. Do not add comments or trailing commas.
-7. Use valid JSON syntax with double quotes for all keys and string values.
-8. Escape any inner double quotes inside text values.
-9. Do not output JavaScript object literals.
-10. Use only technologies listed in TechStack.
-11. Do not mention out-of-scope technologies.
-12. Use only skills from the skill source.
-13. phaseB skills must not duplicate phaseA skills.
+Requirements:
+- Total questions = 20 exactly.
+- phaseA length = 15 exactly; options levels = None, Basic, Intermediate, Advanced.
+- phaseB length = 5 exactly; options levels = Beginner, Comfortable, Confident, Expert.
+- Questions must be practical and scenario-based.
+- Use only tech from techstack input.
+- Use only skills from allowed skills.
+- phaseB skills should not duplicate phaseA skills when possible.
+- No markdown fences, no comments.
 
-QUESTION DESIGN RULES
-- All questions must be practical and scenario-based.
-- Avoid generic survey wording.
-- phaseA progression:
-    - Q1-Q5: basic usage
-    - Q6-Q10: real project usage
-    - Q11-Q15: optimization / problem solving / design
-
-OPTION RULES
-- Every question must have exactly 4 options.
-- phaseA levels must be exactly: None, Basic, Intermediate, Advanced.
-- phaseB levels must be exactly: Beginner, Comfortable, Confident, Expert.
-- Option text should be concise, actionable, and progressively harder.
-
-SELF-CHECK BEFORE OUTPUT
-- Ensure len(phaseA) == 15.
-- Ensure len(phaseB) == 5.
-- Ensure each question has exactly 4 options.
-- Ensure option level names match allowed values exactly.
-- If counts are wrong, fix counts before returning final JSON.
-- Ensure output is parseable by Python json.loads without modification.
-
-RESPONSE SCHEMA (MUST MATCH)
+Output schema:
 {{
-    "contextQuestion": "",
-    "phaseA": [
-        {{
-            "skill": "",
-            "question": "",
-            "options": [
-                {{ "text": "", "level": "None" }},
-                {{ "text": "", "level": "Basic" }},
-                {{ "text": "", "level": "Intermediate" }},
-                {{ "text": "", "level": "Advanced" }}
-            ]
-        }}
-    ],
-    "phaseB": [
-        {{
-            "skill": "",
-            "question": "",
-            "options": [
-                {{ "text": "", "level": "Beginner" }},
-                {{ "text": "", "level": "Comfortable" }},
-                {{ "text": "", "level": "Confident" }},
-                {{ "text": "", "level": "Expert" }}
-            ]
-        }}
-    ]
+  "contextQuestion": "",
+  "phaseA": [{{"skill": "", "question": "", "options": [{{"text": "", "level": "None"}}, {{"text": "", "level": "Basic"}}, {{"text": "", "level": "Intermediate"}}, {{"text": "", "level": "Advanced"}}]}}],
+  "phaseB": [{{"skill": "", "question": "", "options": [{{"text": "", "level": "Beginner"}}, {{"text": "", "level": "Comfortable"}}, {{"text": "", "level": "Confident"}}, {{"text": "", "level": "Expert"}}]}}]
 }}
 """
         response_text = await self.llm_provider.generate_content(
@@ -176,7 +283,7 @@ RESPONSE SCHEMA (MUST MATCH)
             model="meta-llama/Llama-3.1-8B-Instruct:novita"
         )
 
-        self.logger.info(f"LLM Response: {response_text}")
+        self.logger.info("LLM response received for assessment generation")
 
         async def _parse_or_repair(candidate_text: str, context: str) -> dict:
             cleaned = self.llm_provider.clean_json_string(candidate_text)
@@ -185,13 +292,8 @@ RESPONSE SCHEMA (MUST MATCH)
             except json.JSONDecodeError as ex:
                 self.logger.warning(f"JSON parse failed in {context}: {ex}")
                 repair_prompt = f"""
-Convert the following content into STRICT valid JSON.
-
-Rules:
-- Output ONLY one JSON object.
-- Use double quotes for all keys and string values.
-- No markdown code fences, no comments, no trailing commas.
-- Keep original meaning and schema.
+Convert this to one strict valid JSON object only.
+Use double quotes, no markdown, no comments, no trailing commas.
 
 Content:
 {cleaned}
@@ -205,145 +307,35 @@ Content:
 
         data = await _parse_or_repair(response_text, "initial assessment generation")
 
-        retry_count = 0
-        while (len(data.get("phaseA", [])) != 15 or len(data.get("phaseB", [])) != 5) and retry_count < 3:
-            count_fix_prompt = f"""
-You will repair one assessment JSON object.
+        if not isinstance(data, dict):
+            data = {}
 
-REQUIREMENTS
-- Return valid JSON only.
-- Keep the same schema and keys.
-- phaseA length must be exactly 15.
-- phaseB length must be exactly 5.
-- Preserve original items as much as possible.
-- If items are missing, add consistent items using the same style/context.
-- If items are extra, remove the least relevant items.
-- Keep level enums strictly valid.
-- Use double quotes for all keys and string values.
-- Ensure result is directly parseable by Python json.loads.
+        fallback_skills = [s.get("name", "") for s in skill_source if isinstance(s, dict) and s.get("name")]
+        phase_a = self._normalize_phase(
+            items=data.get("phaseA"),
+            target_count=15,
+            levels=self.PHASE_A_LEVELS,
+            fallback_skills=fallback_skills,
+            techstack_str=techstack_str,
+            phase="phaseA",
+            avoid_skills=set(),
+        )
+        phase_a_skills = {normalize_text(item.get("skill")).lower() for item in phase_a}
+        phase_b = self._normalize_phase(
+            items=data.get("phaseB"),
+            target_count=5,
+            levels=self.PHASE_B_LEVELS,
+            fallback_skills=fallback_skills,
+            techstack_str=techstack_str,
+            phase="phaseB",
+            avoid_skills=phase_a_skills,
+        )
 
-CONTEXT
-- Role: {request.role}
-- Level: {request.level}
-- TechStack: {techstack_str}
-- Domain: {domain_str}
-- User Intent: {free_text_normalized}
-
-ALLOWED LEVELS
-- phaseA: None, Basic, Intermediate, Advanced
-- phaseB: Beginner, Comfortable, Confident, Expert
-
-JSON CANDIDATE
-{json.dumps(data, ensure_ascii=False)}
-"""
-
-            fixed_text = await self.llm_provider.generate_content(
-                prompt=count_fix_prompt,
-                model="meta-llama/Llama-3.1-8B-Instruct:novita"
-            )
-            data = await _parse_or_repair(fixed_text, "count-fix generation")
-            retry_count += 1
-
-        phase_a = data.get("phaseA", []) if isinstance(data.get("phaseA", []), list) else []
-        phase_b = data.get("phaseB", []) if isinstance(data.get("phaseB", []), list) else []
-
-        if len(phase_a) < 15:
-            missing_a = 15 - len(phase_a)
-            add_phase_a_prompt = f"""
-Generate ONLY a JSON array for missing phaseA items.
-
-Requirements:
-- Return a JSON array with exactly {missing_a} objects.
-- Each object schema:
-    {{
-        "skill": "",
-        "question": "",
-        "options": [
-            {{"text": "", "level": "None"}},
-            {{"text": "", "level": "Basic"}},
-            {{"text": "", "level": "Intermediate"}},
-            {{"text": "", "level": "Advanced"}}
-        ]
-    }}
-- Use only TechStack technologies.
-- Use skills from skill reference.
-- Do not repeat existing questions.
-
-Context:
-Role: {request.role}
-Level: {request.level}
-TechStack: {techstack_str}
-Domain: {domain_str}
-User Intent: {free_text_normalized}
-
-Skill source:
-{skill_reference_str}
-
-Existing phaseA:
-{json.dumps(phase_a, ensure_ascii=False)}
-"""
-
-            add_phase_a_text = await self.llm_provider.generate_content(
-                prompt=add_phase_a_prompt,
-                model="meta-llama/Llama-3.1-8B-Instruct:novita"
-            )
-            add_phase_a_data = await _parse_or_repair(add_phase_a_text, "phaseA missing-items generation")
-            if isinstance(add_phase_a_data, dict):
-                add_phase_a_data = add_phase_a_data.get("phaseA", [])
-            if isinstance(add_phase_a_data, list):
-                phase_a.extend(add_phase_a_data)
-
-        if len(phase_b) < 5:
-            missing_b = 5 - len(phase_b)
-            add_phase_b_prompt = f"""
-Generate ONLY a JSON array for missing phaseB items.
-
-Requirements:
-- Return a JSON array with exactly {missing_b} objects.
-- Each object schema:
-    {{
-        "skill": "",
-        "question": "",
-        "options": [
-            {{"text": "", "level": "Beginner"}},
-            {{"text": "", "level": "Comfortable"}},
-            {{"text": "", "level": "Confident"}},
-            {{"text": "", "level": "Expert"}}
-        ]
-    }}
-- Use only TechStack technologies.
-- Use skills from skill reference.
-- phaseB skills should differ from phaseA skills when possible.
-
-Context:
-Role: {request.role}
-Level: {request.level}
-TechStack: {techstack_str}
-Domain: {domain_str}
-User Intent: {free_text_normalized}
-
-Skill source:
-{skill_reference_str}
-
-Existing phaseA:
-{json.dumps(phase_a, ensure_ascii=False)}
-
-Existing phaseB:
-{json.dumps(phase_b, ensure_ascii=False)}
-"""
-
-            add_phase_b_text = await self.llm_provider.generate_content(
-                prompt=add_phase_b_prompt,
-                model="meta-llama/Llama-3.1-8B-Instruct:novita"
-            )
-            add_phase_b_data = await _parse_or_repair(add_phase_b_text, "phaseB missing-items generation")
-            if isinstance(add_phase_b_data, dict):
-                add_phase_b_data = add_phase_b_data.get("phaseB", [])
-            if isinstance(add_phase_b_data, list):
-                phase_b.extend(add_phase_b_data)
-
-        data["phaseA"] = phase_a[:15]
-        data["phaseB"] = phase_b[:5]
+        data = {
+            "contextQuestion": normalize_text(data.get("contextQuestion")) or "Tell us about a recent technical challenge you solved.",
+            "phaseA": phase_a,
+            "phaseB": phase_b,
+        }
 
         if len(data.get("phaseA", [])) != 15:
             raise Exception("Invalid Phase A")
