@@ -46,3 +46,27 @@ class RoadmapResponse(BaseModel):
     status: str
     roadmap: Optional[dict] = None
     error: Optional[str] = None
+
+
+class EvaluationItemDto(BaseModel):
+    type: str
+    score: int
+    question: Optional[str] = ""
+    answer: Optional[str] = ""
+
+
+class RoadmapProgressUpdateRequest(BaseModel):
+    current_roadmap: dict
+    interview_type: str
+    aim_level: Optional[str] = ""
+    evaluation: list[EvaluationItemDto]
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_stringified_body(cls, data):
+        if isinstance(data, str):
+            try:
+                return json.loads(data)
+            except json.JSONDecodeError as exc:
+                raise ValueError("Request body must be a valid JSON object") from exc
+        return data
