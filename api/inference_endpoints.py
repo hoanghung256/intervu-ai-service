@@ -121,6 +121,7 @@ async def generate_assessment(
             }
 
         assessment_data = await assessment_service.generate_assessment(request)
+        logging.info(f"Generated assessment: {assessment_data}")
         return {
             "status": "success",
             "context_question": assessment_data.get("contextQuestion", ""),
@@ -156,7 +157,7 @@ async def extract_transcript(
     id: str = Query("default"),
     deepgram_service: DeepgramService = Depends(get_deepgram_service),
     transcript_service: TranscriptService = Depends(get_transcript_service),
-    history_repo: HistoryRepository = Depends(get_history_repo)
+    tags: Optional[str] = Form(None)
 ):
     if not deepgram_service.client:
         raise HTTPException(status_code=503, detail="Deepgram service is not configured")
@@ -167,19 +168,27 @@ async def extract_transcript(
         if not transcript_text:
             raise HTTPException(status_code=400, detail="Transcription failed")
 
-        questions_list = await transcript_service.extract_questions_from_text(transcript_text)
+        parsed_tags = []
+        if tags:
+            try:
+                parsed_tags = json.loads(tags)
+            except Exception:
+                # If not JSON, maybe it's a comma separated string
+                parsed_tags = [t.strip() for t in tags.split(",") if t.strip()]
 
-        transcript_data = {
-            "text": transcript_text,
-            "timestamp": datetime.utcnow().isoformat(),
-            "user_id": id,
-        }
-        await history_repo.set_transcript(id, transcript_data)
+        questions_list = await transcript_service.extract_questions_from_text(transcript_text, parsed_tags)
+
+        # Extract all tags used in the question list to return them at the top level
+        used_tags = set()
+        for q in questions_list:
+            if "tags" in q and isinstance(q["tags"], list):
+                used_tags.update(q["tags"])
 
         return {
             "status": "success",
             "transcript": transcript_text,
             "question_list": questions_list,
+            "tags": list(used_tags)
         }
     except Exception as e:
         logging.error(f"Failed to extract transcript: {e}")
@@ -191,10 +200,21 @@ async def extract_questions_endpoint(
     transcript_service: TranscriptService = Depends(get_transcript_service)
 ):
     try:
-        questions = await transcript_service.extract_questions_from_text(request.transcript_text)
+        questions = await transcript_service.extract_questions_from_text(
+            request.transcript_text, 
+            request.tags
+        )
+        
+        # Extract used tags
+        used_tags = set()
+        for q in questions:
+            if "tags" in q and isinstance(q["tags"], list):
+                used_tags.update(q["tags"])
+                
         return {
             "status": "success",
-            "question_list": questions
+            "question_list": questions,
+            "tags": list(used_tags)
         }
     except Exception as e:
         logging.error(f"Failed to extract questions: {e}")

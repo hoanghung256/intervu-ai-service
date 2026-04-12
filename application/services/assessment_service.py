@@ -41,7 +41,6 @@ def normalize_text(text: Union[str, None]) -> str:
 class AssessmentService:
     def __init__(self, llm_provider: LLMProvider):
         self.llm_provider = llm_provider
-        self.logger = logging.getLogger(__name__)
 
     def is_empty_request(self, req: AssessmentRequest):
         def _empty(v):
@@ -65,13 +64,17 @@ class AssessmentService:
         )
 
     async def generate_assessment(self, request: AssessmentRequest):
+        logging.info(f"Generating assessment for role: {request.role}, level: {request.level}")
+        
         skill_reference_path = os.path.join(os.getcwd(), "skill-references.json")
-        with open(skill_reference_path, "r", encoding="utf-8") as f:
-            skill_reference = json.load(f)
+        try:
+            with open(skill_reference_path, "r", encoding="utf-8") as f:
+                skill_reference = json.load(f)
+        except Exception as e:
+            logging.error(f"Failed to load skill-references.json: {e}")
+            raise
 
         skill_reference_str = json.dumps(skill_reference, indent=2)
-
-        # normalize free text using module-level helper
 
         techstack_str = (
             ", ".join(request.techstack) if isinstance(request.techstack, (list, tuple)) else (request.techstack or "")
@@ -184,20 +187,35 @@ Output schema:
     ]
 }}
 """
-        response_text = await self.llm_provider.generate_content(
-            prompt=prompt,
-                        model = "meta-llama/Llama-3.1-8B-Instruct:novita"
-        )
+        try:
+            response_text = await self.llm_provider.generate_content(
+                prompt=prompt,
+                model="meta-llama/Llama-3.1-8B-Instruct:novita"
+            )
 
-        self.logger.info(f"LLM Response: {response_text}")
+            logging.info(f"Assessment LLM Response: {response_text}")
 
-        cleaned_json = self.llm_provider.clean_json_string(response_text)
-        data = json.loads(cleaned_json)
+            cleaned_json = self.llm_provider.clean_json_string(response_text)
+            if not cleaned_json:
+                logging.error(f"Failed to find JSON in assessment LLM response: {response_text}")
+                raise ValueError("The AI model returned text that did not contain a valid JSON assessment.")
 
-        if len(data.get("phaseA", [])) != 15:
-            raise Exception("Invalid Phase A")
+            data = json.loads(cleaned_json)
 
-        if len(data.get("phaseB", [])) != 5:
-            raise Exception("Invalid Phase B")
+            if len(data.get("phaseA", [])) != 15:
+                logging.error(f"Invalid Phase A length: {len(data.get('phaseA', []))}")
+                raise Exception("Invalid Phase A length (expected 15)")
 
-        return data
+            if len(data.get("phaseB", [])) != 5:
+                logging.error(f"Invalid Phase B length: {len(data.get('phaseB', []))}")
+                raise Exception("Invalid Phase B length (expected 5)")
+
+            logging.info("Successfully generated and validated assessment.")
+            return data
+
+        except json.JSONDecodeError as e:
+            logging.error(f"Failed to parse assessment JSON: {e}. Cleaned output: {cleaned_json}")
+            raise ValueError(f"Failed to parse the AI model's assessment. Error: {str(e)}")
+        except Exception as e:
+            logging.error(f"Error in generate_assessment: {e}")
+            raise
