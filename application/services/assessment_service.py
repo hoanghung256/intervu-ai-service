@@ -41,6 +41,7 @@ def normalize_text(text: Union[str, None]) -> str:
 class AssessmentService:
     def __init__(self, llm_provider: LLMProvider):
         self.llm_provider = llm_provider
+        self.logger = logging.getLogger(__name__)
 
     def is_empty_request(self, req: AssessmentRequest):
         def _empty(v):
