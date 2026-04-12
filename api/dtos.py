@@ -62,13 +62,16 @@ class TranscriptResponse(BaseModel):
     status: str
     transcript: str
     question_list: List[dict]
+    tags: Optional[List[str]] = Field(default_factory=list)
 
 class ExtractQuestionsRequest(BaseModel):
     transcript_text: str
+    tags: Optional[List[str]] = Field(default_factory=list)
 
 class ExtractQuestionsResponse(BaseModel):
     status: str
     question_list: List[dict]
+    tags: Optional[List[str]] = Field(default_factory=list)
     
 class CvEvaluationResponse(BaseModel):
     status: str
