@@ -3,6 +3,14 @@ import logging
 from .history_repository import HistoryRepository
 from .memory_history_repository import MemoryHistoryRepository
 from .postgres_history_repository import PostgresHistoryRepository
+from infrastructure.env_constants import (
+    DEFAULT_BACKEND,
+    DEFAULT_POSTGRES_HISTORY_TABLE,
+    ENV_BACKEND,
+    ENV_DATABASE_URL,
+    ENV_POSTGRES_DSN,
+    ENV_POSTGRES_HISTORY_TABLE,
+)
 
 _history_repository_instance: HistoryRepository = None
 
@@ -11,14 +19,14 @@ def get_history_repository() -> HistoryRepository:
     if _history_repository_instance is not None:
         return _history_repository_instance
 
-    backend = os.getenv("BACKEND", "memory").lower()
+    backend = os.getenv(ENV_BACKEND, DEFAULT_BACKEND).lower()
 
     if backend in {"postgres", "postgresql"}:
-        postgres_dsn = os.getenv("POSTGRES_DSN") or os.getenv("DATABASE_URL")
-        postgres_table = os.getenv("POSTGRES_HISTORY_TABLE", "InterviewUserSessions")
+        postgres_dsn = os.getenv(ENV_POSTGRES_DSN) or os.getenv(ENV_DATABASE_URL)
+        postgres_table = os.getenv(ENV_POSTGRES_HISTORY_TABLE, DEFAULT_POSTGRES_HISTORY_TABLE)
         
         if not postgres_dsn:
-            logging.error("POSTGRES_DSN not found. Falling back to memory.")
+            logging.error(f"{ENV_POSTGRES_DSN} not found. Falling back to memory.")
             _history_repository_instance = MemoryHistoryRepository()
         else:
             try:

@@ -8,6 +8,7 @@ from .base_provider import BaseLLMProvider
 from .gemini_provider import GeminiProvider
 from .huggingface_provider import HuggingFaceProvider
 from .model_constants import GEMINI_DEFAULT_MODEL
+from infrastructure.env_constants import ENV_LLM_PROVIDER
 
 try:
     from dotenv import load_dotenv
@@ -26,11 +27,11 @@ class LLMProvider:
         if self._provider is not None:
             return
 
-        provider_name = os.getenv("LLM_PROVIDER", "").strip().lower()
+        provider_name = os.getenv(ENV_LLM_PROVIDER, "").strip().lower()
         self._provider_name = provider_name
 
         if not provider_name:
-            self._config_error = "LLM service is misconfigured (LLM_PROVIDER is required: gemini|huggingface)."
+            self._config_error = f"LLM service is misconfigured ({ENV_LLM_PROVIDER} is required: gemini|huggingface)."
             logging.error(self._config_error)
             return
 
@@ -42,7 +43,7 @@ class LLMProvider:
             self._provider = HuggingFaceProvider()
             return
 
-        self._config_error = "LLM service is misconfigured (LLM_PROVIDER must be 'gemini' or 'huggingface')."
+        self._config_error = f"LLM service is misconfigured ({ENV_LLM_PROVIDER} must be 'gemini' or 'huggingface')."
         logging.error(self._config_error)
 
     async def generate_content(self, prompt: str, model: Optional[str] = None) -> str:

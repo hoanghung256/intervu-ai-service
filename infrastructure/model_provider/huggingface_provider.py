@@ -4,6 +4,7 @@ from typing import Optional
 
 from .base_provider import BaseLLMProvider
 from .model_constants import HUGGINGFACE_DEFAULT_MODEL
+from infrastructure.env_constants import ENV_HF_TOKEN
 
 
 class HuggingFaceProvider(BaseLLMProvider):
@@ -14,9 +15,9 @@ class HuggingFaceProvider(BaseLLMProvider):
         if self._client is not None:
             return
 
-        hf_token = os.getenv("HF_TOKEN")
+        hf_token = os.getenv(ENV_HF_TOKEN)
         if not hf_token:
-            logging.warning("HF_TOKEN not found. HuggingFace services will be unavailable.")
+            logging.warning(f"{ENV_HF_TOKEN} not found. HuggingFace services will be unavailable.")
             return
 
         try:

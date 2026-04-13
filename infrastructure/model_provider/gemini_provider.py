@@ -4,6 +4,7 @@ from typing import Optional
 
 from .base_provider import BaseLLMProvider
 from .model_constants import GEMINI_DEFAULT_MODEL
+from infrastructure.env_constants import ENV_GEMINI_API_KEY
 
 
 class GeminiProvider(BaseLLMProvider):
@@ -14,9 +15,9 @@ class GeminiProvider(BaseLLMProvider):
         if self._client is not None:
             return
 
-        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        gemini_api_key = os.getenv(ENV_GEMINI_API_KEY)
         if not gemini_api_key:
-            logging.warning("GEMINI_API_KEY not found. Gemini services will be unavailable.")
+            logging.warning(f"{ENV_GEMINI_API_KEY} not found. Gemini services will be unavailable.")
             return
 
         try:

@@ -3,14 +3,22 @@ import os
 from typing import Optional, List, Tuple
 from infrastructure.model_provider.llm_provider import LLMProvider
 from infrastructure.repository.history_repository import HistoryRepository
+from infrastructure.env_constants import (
+    DEFAULT_MAX_HISTORY_MESSAGES,
+    DEFAULT_MIN_ANSWER_SENTENCES,
+    DEFAULT_MIN_ANSWER_WORDS,
+    ENV_MAX_HISTORY_MESSAGES,
+    ENV_MIN_ANSWER_SENTENCES,
+    ENV_MIN_ANSWER_WORDS,
+)
 
 class InterviewService:
     def __init__(self, llm_provider: LLMProvider, history_repository: HistoryRepository):
         self.llm_provider = llm_provider
         self.history_repository = history_repository
-        self.max_history_messages = int(os.getenv("MAX_HISTORY_MESSAGES", "50"))
-        self.min_answer_sentences = int(os.getenv("MIN_ANSWER_SENTENCES", "2"))
-        self.min_answer_words = int(os.getenv("MIN_ANSWER_WORDS", "12"))
+        self.max_history_messages = int(os.getenv(ENV_MAX_HISTORY_MESSAGES, DEFAULT_MAX_HISTORY_MESSAGES))
+        self.min_answer_sentences = int(os.getenv(ENV_MIN_ANSWER_SENTENCES, DEFAULT_MIN_ANSWER_SENTENCES))
+        self.min_answer_words = int(os.getenv(ENV_MIN_ANSWER_WORDS, DEFAULT_MIN_ANSWER_WORDS))
 
     def validate_candidate_answer(self, candidate_answer: Optional[str], previous_question: Optional[str]) -> Tuple[bool, List[str]]:
         reasons: List[str] = []
