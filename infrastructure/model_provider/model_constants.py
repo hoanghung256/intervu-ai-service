@@ -1,0 +1,28 @@
+# Gemini models
+GEMINI_GEMMA_3_27B_IT = "gemma-3-27b-it"
+GEMINI_GEMMA_3_12B_IT = "gemma-3-12b-it"
+GEMINI_2_0_FLASH = "gemini-2.0-flash"
+GEMINI_2_0_FLASH_LITE = "gemini-2.0-flash-lite"
+
+# Hugging Face router models
+HUGGINGFACE_LLAMA_3_1_8B_NOVITA = "meta-llama/Llama-3.1-8B-Instruct:novita"
+HUGGINGFACE_QWEN2_5_7B_INSTRUCT = "Qwen/Qwen2.5-7B-Instruct"
+HUGGINGFACE_MISTRAL_7B_INSTRUCT = "mistralai/Mistral-7B-Instruct-v0.3"
+
+# Backward-compatible aliases
+GEMINI_DEFAULT_MODEL = GEMINI_GEMMA_3_27B_IT
+HUGGINGFACE_DEFAULT_MODEL = HUGGINGFACE_LLAMA_3_1_8B_NOVITA
+
+# Optional lists for validation/UI selection
+GEMINI_SUPPORTED_MODELS = (
+    GEMINI_GEMMA_3_27B_IT,
+    GEMINI_GEMMA_3_12B_IT,
+    GEMINI_2_0_FLASH,
+    GEMINI_2_0_FLASH_LITE,
+)
+
+HUGGINGFACE_SUPPORTED_MODELS = (
+    HUGGINGFACE_LLAMA_3_1_8B_NOVITA,
+    HUGGINGFACE_QWEN2_5_7B_INSTRUCT,
+    HUGGINGFACE_MISTRAL_7B_INSTRUCT,
+)

@@ -3,10 +3,11 @@ import asyncio
 import logging
 from typing import Optional
 from deepgram import DeepgramClient
+from infrastructure.env_constants import ENV_DEEPGRAM_API_KEY
 
 class DeepgramService:
     def __init__(self):
-        self.api_key = os.getenv("DEEPGRAM_API_KEY")
+        self.api_key = os.getenv(ENV_DEEPGRAM_API_KEY)
         try:
             self.client = DeepgramClient(api_key=self.api_key) if self.api_key else None
         except Exception as e:

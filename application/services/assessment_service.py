@@ -4,6 +4,7 @@ import logging
 import re
 from typing import Any, Dict, List, Set, Union
 from infrastructure.model_provider.llm_provider import LLMProvider
+from infrastructure.model_provider.model_constants import HUGGINGFACE_DEFAULT_MODEL
 from api.dtos import AssessmentRequest
 
 CONTRACTIONS = {
@@ -280,7 +281,7 @@ Output schema:
 """
         response_text = await self.llm_provider.generate_content(
             prompt=prompt,
-            model="meta-llama/Llama-3.1-8B-Instruct:novita"
+            model=HUGGINGFACE_DEFAULT_MODEL
         )
 
         self.logger.info("LLM response received for assessment generation")
@@ -300,7 +301,7 @@ Content:
 """
                 repaired_text = await self.llm_provider.generate_content(
                     prompt=repair_prompt,
-                    model="meta-llama/Llama-3.1-8B-Instruct:novita"
+                    model=HUGGINGFACE_DEFAULT_MODEL
                 )
                 repaired_json = self.llm_provider.clean_json_string(repaired_text)
                 return json.loads(repaired_json)

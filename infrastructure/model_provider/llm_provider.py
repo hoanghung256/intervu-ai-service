@@ -3,84 +3,78 @@ import json
 import re
 import logging
 from typing import Optional, List, Dict
-from google import genai
-from openai import AsyncOpenAI
-from dotenv import load_dotenv
 
-load_dotenv()
+from .base_provider import BaseLLMProvider
+from .gemini_provider import GeminiProvider
+from .huggingface_provider import HuggingFaceProvider
+from .model_constants import GEMINI_DEFAULT_MODEL
+from infrastructure.env_constants import ENV_LLM_PROVIDER
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    logging.warning("python-dotenv is not installed; skipping .env loading.")
 
 class LLMProvider:
-    def __init__(self, model_name: str = "gemma-3-27b-it"):
+    def __init__(self, model_name: str = GEMINI_DEFAULT_MODEL, provider: Optional[BaseLLMProvider] = None):
         self.model_name = model_name
-        
-        gemini_api_key = os.getenv("GEMINI_API_KEY")
-        if gemini_api_key:
-            try:
-                self.gemini_client = genai.Client(api_key=gemini_api_key).aio
-            except Exception as e:
-                logging.error(f"Failed to initialize Gemini client: {e}")
-                self.gemini_client = None
-        else:
-            logging.warning("GEMINI_API_KEY not found. Gemini services will be unavailable.")
-            self.gemini_client = None
+        self._provider = provider
+        self._provider_name = ""
+        self._config_error: Optional[str] = None
 
-        hf_token = os.getenv("HF_TOKEN")
-        if hf_token:
-            try:
-                self.hg_client = AsyncOpenAI(
-                    base_url="https://router.huggingface.co/v1",
-                    api_key=hf_token,
-                    timeout=90.0,
-                )
-            except Exception as e:
-                logging.error(f"Failed to initialize HuggingFace client: {e}")
-                self.hg_client = None
-        else:
-            logging.warning("HF_TOKEN not found. HuggingFace services will be unavailable.")
-            self.hg_client = None
+        if self._provider is not None:
+            return
+
+        provider_name = os.getenv(ENV_LLM_PROVIDER, "").strip().lower()
+        self._provider_name = provider_name
+
+        if not provider_name:
+            self._config_error = f"LLM service is misconfigured ({ENV_LLM_PROVIDER} is required: gemini|huggingface)."
+            logging.error(self._config_error)
+            return
+
+        if provider_name == "gemini":
+            self._provider = GeminiProvider(model_name=model_name)
+            return
+
+        if provider_name == "huggingface":
+            self._provider = HuggingFaceProvider()
+            return
+
+        self._config_error = f"LLM service is misconfigured ({ENV_LLM_PROVIDER} must be 'gemini' or 'huggingface')."
+        logging.error(self._config_error)
 
     async def generate_content(self, prompt: str, model: Optional[str] = None) -> str:
-        # Fallback to HuggingFace if Gemini is not available or if explicitly requested
-        if self.hg_client:
-            model = model or "meta-llama/Llama-3.1-8B-Instruct:novita"
-            try:
-                response = await self.hg_client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                return response.choices[0].message.content
-            except Exception as e:
-                logging.error(f"HuggingFace generation failed: {e}")
+        if self._config_error:
+            return self._config_error
 
-        if not self.gemini_client:
-            return "LLM service is currently unavailable (HF_TOKEN and GEMINI_API_KEY missing or invalid)."
-        
-        model = model or self.model_name
-        try:
-            response = await self.gemini_client.models.generate_content(
-                model=model,
-                contents=[prompt]
-            )
-            return response.text
-        except Exception as e:
-            logging.error(f"Gemini generation failed: {e}")
-            return "LLM service is currently unavailable (both HuggingFace and Gemini requests failed)."
+        if not self._provider:
+            return "LLM service is currently unavailable (provider is not initialized)."
 
-    async def chat_completion(self, messages: List[Dict], model: str = "meta-llama/Llama-3.1-8B-Instruct:novita") -> Dict:
-        if not self.hg_client:
-            return {
-                "content": "HuggingFace service is currently unavailable (API key missing or invalid).",
-                "role": "assistant"
-            }
+        return await self._provider.generate_content(prompt=prompt, model=model)
 
-        response = await self.hg_client.chat.completions.create(
-            model=model,
-            messages=messages
-        )
+    async def chat_completion(self, messages: List[Dict], model: Optional[str] = None) -> Dict:
+        prompt = self._messages_to_prompt(messages)
+        content = await self.generate_content(prompt=prompt, model=model)
         return {
-            "content": response.choices[0].message.content,
-            "role": response.choices[0].message.role
+            "content": content,
+            "role": "assistant"
         }
+
+    @staticmethod
+    def _messages_to_prompt(messages: List[Dict]) -> str:
+        parts = []
+        for message in messages or []:
+            role = str(message.get("role", "user")).strip() or "user"
+            raw_content = message.get("content", "")
+            if isinstance(raw_content, (dict, list)):
+                content = json.dumps(raw_content, ensure_ascii=False)
+            else:
+                content = str(raw_content)
+            parts.append(f"{role}: {content}")
+        return "\n".join(parts).strip()
 
     @staticmethod
     def clean_json_string(s: str) -> str:
