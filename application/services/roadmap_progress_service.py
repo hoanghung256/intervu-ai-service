@@ -2,7 +2,7 @@ import json
 import logging
 from api.roadmap_dto import RoadmapProgressUpdateRequest
 from infrastructure.model_provider.llm_provider import LLMProvider
-from infrastructure.model_provider.model_constants import GEMINI_DEFAULT_MODEL
+from infrastructure.model_provider.model_constants import HUGGINGFACE_DEFAULT_MODEL
 
 class RoadmapProgressService:
     def __init__(self, llm_provider: LLMProvider):
@@ -65,7 +65,7 @@ current_roadmap:
 
         response_text = await self.llm_provider.generate_content(
             prompt, 
-            model=GEMINI_DEFAULT_MODEL
+            model=HUGGINGFACE_DEFAULT_MODEL
         )
 
         try:

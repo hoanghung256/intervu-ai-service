@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from infrastructure.model_provider.llm_provider import LLMProvider
-from infrastructure.model_provider.model_constants import GEMINI_DEFAULT_MODEL
+from infrastructure.model_provider.model_constants import HUGGINGFACE_DEFAULT_MODEL
 
 class CVService:
     def __init__(self, llm_provider: LLMProvider):
@@ -71,7 +71,7 @@ Rules:
 CV text:
 \"\"\"{text}\"\"\"
 """
-        response_text = await self.llm_provider.generate_content(prompt, model=GEMINI_DEFAULT_MODEL)
+        response_text = await self.llm_provider.generate_content(prompt, model=HUGGINGFACE_DEFAULT_MODEL)
         if self._is_upstream_unavailable(response_text):
             raise RuntimeError(response_text)
 
