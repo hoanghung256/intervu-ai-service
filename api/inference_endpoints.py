@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Union
 from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, Body, HTTPException, BackgroundTasks
@@ -27,6 +28,21 @@ from domain.entities.query import Query as QueryEntity
 from infrastructure.external_services.deepgram_service import DeepgramService
 
 router = APIRouter(prefix="/api")
+
+
+def _is_pdf_upload(file: UploadFile) -> bool:
+    filename = (file.filename or "").lower()
+    return filename.endswith(".pdf") or file.content_type == "application/pdf"
+
+
+def _decode_text_upload(content: bytes) -> str:
+    # Support common plain-text encodings while rejecting binary payloads.
+    for encoding in ("utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be"):
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise UnicodeDecodeError("text-decode", content, 0, 1, "Unsupported or binary file")
 
 # Dependency injection
 def get_llm_provider() -> LLMProvider:
@@ -87,23 +103,61 @@ async def extract_document(
         raise HTTPException(status_code=400, detail=f"doc_type must be one of {valid_types}")
 
     content = await file.read()
-    if file.filename.endswith(".pdf"):
+    filename = (file.filename or "upload").lower()
+
+    if _is_pdf_upload(file):
         text = await cv_service.extract_text_from_pdf(content)
     else:
-        text = content.decode("utf-8")
+        allowed_text_exts = {".txt", ".md", ".markdown", ".json", ".yaml", ".yml", ".csv", ".log"}
+        extension = Path(filename).suffix
+        if extension and extension not in allowed_text_exts:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Unsupported document format for /extract-document. "
+                    "Please upload a PDF, or a plain-text file (.txt/.md/.json/.yaml/.csv/.log)."
+                ),
+            )
+
+        try:
+            text = _decode_text_upload(content)
+        except UnicodeDecodeError:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Unable to decode uploaded file as text. "
+                    "Please upload a UTF text file or PDF."
+                ),
+            )
 
     try:
         parsed_json = await cv_service.parse_document_to_json(text, doc_type)
         if doc_type.lower() == "cv":
             await history_repo.set_last_cv(id, parsed_json)
         return parsed_json
+    except RuntimeError as e:
+        logging.error(f"Upstream LLM service unavailable while parsing {doc_type}: {e}")
+        if doc_type.lower() == "cv":
+            await history_repo.set_last_cv(id, None)
+        raise HTTPException(
+            status_code=503,
+            detail="Document parsing service is temporarily unavailable. Please retry shortly."
+        )
+    except ValueError as e:
+        logging.error(f"Invalid LLM output while parsing {doc_type}: {e}")
+        if doc_type.lower() == "cv":
+            await history_repo.set_last_cv(id, None)
+        raise HTTPException(
+            status_code=422,
+            detail=f"Failed to parse {doc_type} content into structured JSON."
+        )
     except Exception as e:
         import traceback
         logging.error(f"Failed to parse document to JSON: {e}")
         logging.error(traceback.format_exc())
         if doc_type.lower() == "cv":
             await history_repo.set_last_cv(id, None)
-        return {"error": f"Failed to parse {doc_type} to JSON: {str(e)}"}
+        raise HTTPException(status_code=500, detail=f"Unexpected error while parsing {doc_type}.")
 
 @router.get("/last-cv")
 async def get_last_cv(id: str = Query("default"), history_repo: HistoryRepository = Depends(get_history_repo)):

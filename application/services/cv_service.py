@@ -72,11 +72,25 @@ CV text:
 \"\"\"{text}\"\"\"
 """
         response_text = await self.llm_provider.generate_content(prompt, model=GEMINI_DEFAULT_MODEL)
+        if self._is_upstream_unavailable(response_text):
+            raise RuntimeError(response_text)
+
         cleaned_json = self.llm_provider.clean_json_string(response_text)
         try:
             return json.loads(cleaned_json)
         except json.JSONDecodeError as e:
             raise ValueError(f"LLM returned invalid JSON. Raw output: '{response_text}'. Cleaned output: '{cleaned_json}'. Parse error: {e}")
+
+    @staticmethod
+    def _is_upstream_unavailable(response_text: str) -> bool:
+        if not response_text:
+            return True
+
+        lowered = response_text.lower()
+        return (
+            "service is currently unavailable" in lowered
+            or "llm service is misconfigured" in lowered
+        )
 
     # Keep backward compatibility if needed, though we will update the endpoint
     async def parse_cv_to_json(self, cv_text: str) -> dict:
