@@ -11,7 +11,7 @@ from api.dtos import (
     ExtractQuestionsRequest, ExtractQuestionsResponse,
     CvEvaluationResponse
 )
-from api.roadmap_dto import RoadmapRequest, RoadmapResponse
+from api.roadmap_dto import RoadmapRequest, RoadmapResponse, RoadmapProgressUpdateRequest
 from infrastructure.model_provider.llm_provider import LLMProvider
 from infrastructure.repository.history_repository import HistoryRepository
 from infrastructure.repository.repository_factory import get_history_repository
@@ -21,6 +21,7 @@ from application.services.interview_service import InterviewService
 from application.services.similarity_service import SimilarityService
 from application.services.transcript_service import TranscriptService
 from application.services.roadmap_service import RoadmapService
+from application.services.roadmap_progress_service import RoadmapProgressService
 from application.llm.inference_usecase import InferenceUseCase
 from domain.entities.query import Query as QueryEntity
 from infrastructure.external_services.deepgram_service import DeepgramService
@@ -54,6 +55,9 @@ def get_transcript_service(llm_provider: LLMProvider = Depends(get_llm_provider)
 
 def get_roadmap_service(llm_provider: LLMProvider = Depends(get_llm_provider)) -> RoadmapService:
     return RoadmapService(llm_provider)
+
+def get_roadmap_progress_service(llm_provider: LLMProvider = Depends(get_llm_provider)) -> RoadmapProgressService:
+    return RoadmapProgressService(llm_provider)
 
 def get_deepgram_service() -> DeepgramService:
     return DeepgramService()
@@ -235,6 +239,22 @@ async def generate_roadmap(
     except Exception as e:
         logging.error(f"Error in generate_roadmap: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/update-roadmap-progress", response_model=RoadmapResponse)
+async def update_roadmap_progress(
+    request: RoadmapProgressUpdateRequest,
+    roadmap_progress_service: RoadmapProgressService = Depends(get_roadmap_progress_service)
+):
+    try:
+        updated_roadmap = await roadmap_progress_service.update_roadmap_progress(request)
+        return {"status": "success", "roadmap": updated_roadmap}
+    except ValueError as e:
+        logging.error(f"Invalid roadmap progress output: {e}")
+        return {"status": "failed", "error": str(e)}
+    except Exception as e:
+        logging.error(f"Error in update_roadmap_progress: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/check-similarity")
 async def check_question_similarity(
