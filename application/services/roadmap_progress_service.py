@@ -2,7 +2,7 @@ import json
 import logging
 from api.roadmap_dto import RoadmapProgressUpdateRequest
 from infrastructure.model_provider.llm_provider import LLMProvider
-
+from infrastructure.model_provider.model_constants import GEMINI_DEFAULT_MODEL
 
 class RoadmapProgressService:
     def __init__(self, llm_provider: LLMProvider):
@@ -63,7 +63,10 @@ current_roadmap:
 
         prompt = base_prompt + request_payload
 
-        response_text = await self.llm_provider.generate_content(prompt, model="gemma-3-27b-it")
+        response_text = await self.llm_provider.generate_content(
+            prompt, 
+            model=GEMINI_DEFAULT_MODEL
+        )
 
         try:
             cleaned_json = self.llm_provider.clean_json_string(response_text)
