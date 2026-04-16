@@ -2,7 +2,7 @@ import json
 import logging
 from api.roadmap_dto import RoadmapRequest
 from infrastructure.model_provider.llm_provider import LLMProvider
-from infrastructure.model_provider.model_constants import HUGGINGFACE_DEFAULT_MODEL
+from infrastructure.model_provider.model_constants import GEMINI_DEFAULT_MODEL, HUGGINGFACE_DEFAULT_MODEL
 
 
 class RoadmapService:
@@ -54,6 +54,7 @@ Return ONLY a valid JSON. No conversational filler. Use this structure:
     {
       "phase_id": "string",
       "phase_name": "string",
+      "phase_description": "1-2 sentence narrative explaining why this phase exists, how it builds on the previous phase, and what the learner will be able to do after completing it.",
       "nodes": [
         {
           "skill_id": "string",
@@ -92,7 +93,8 @@ Gap: {request.gap}
 
         prompt = base_prompt + request_payload
 
-        response_text = await self.llm_provider.generate_content(prompt, model=HUGGINGFACE_DEFAULT_MODEL)
+        # response_text = await self.llm_provider.generate_content(prompt, model=HUGGINGFACE_DEFAULT_MODEL)
+        response_text = await self.llm_provider.generate_content(prompt, model=GEMINI_DEFAULT_MODEL)
 
         try:
             cleaned_json = self.llm_provider.clean_json_string(response_text)

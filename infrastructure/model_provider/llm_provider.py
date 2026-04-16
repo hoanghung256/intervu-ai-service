@@ -1,4 +1,3 @@
-import os
 import json
 import re
 import logging
@@ -7,8 +6,12 @@ from typing import Optional, List, Dict
 from .base_provider import BaseLLMProvider
 from .gemini_provider import GeminiProvider
 from .huggingface_provider import HuggingFaceProvider
-from .model_constants import GEMINI_DEFAULT_MODEL
-from infrastructure.env_constants import ENV_LLM_PROVIDER
+from .model_constants import (
+    GEMINI_DEFAULT_MODEL,
+    PROVIDER_GEMINI,
+    PROVIDER_HUGGINGFACE,
+    resolve_provider_name,
+)
 
 try:
     from dotenv import load_dotenv
@@ -17,43 +20,41 @@ try:
 except Exception:
     logging.warning("python-dotenv is not installed; skipping .env loading.")
 
+
 class LLMProvider:
     def __init__(self, model_name: str = GEMINI_DEFAULT_MODEL, provider: Optional[BaseLLMProvider] = None):
         self.model_name = model_name
-        self._provider = provider
-        self._provider_name = ""
-        self._config_error: Optional[str] = None
+        self._override: Optional[BaseLLMProvider] = provider
+        self._gemini: Optional[GeminiProvider] = None
+        self._hf: Optional[HuggingFaceProvider] = None
 
-        if self._provider is not None:
-            return
+    def _get_provider(self, model: str) -> BaseLLMProvider:
+        if self._override is not None:
+            return self._override
 
-        provider_name = os.getenv(ENV_LLM_PROVIDER, "").strip().lower()
-        self._provider_name = provider_name
+        provider_name = resolve_provider_name(model)
 
-        if not provider_name:
-            self._config_error = f"LLM service is misconfigured ({ENV_LLM_PROVIDER} is required: gemini|huggingface)."
-            logging.error(self._config_error)
-            return
+        if provider_name == PROVIDER_GEMINI:
+            if self._gemini is None:
+                self._gemini = GeminiProvider(model_name=model)
+            return self._gemini
 
-        if provider_name == "gemini":
-            self._provider = GeminiProvider(model_name=model_name)
-            return
+        if provider_name == PROVIDER_HUGGINGFACE:
+            if self._hf is None:
+                self._hf = HuggingFaceProvider(model_name=model)
+            return self._hf
 
-        if provider_name == "huggingface":
-            self._provider = HuggingFaceProvider()
-            return
-
-        self._config_error = f"LLM service is misconfigured ({ENV_LLM_PROVIDER} must be 'gemini' or 'huggingface')."
-        logging.error(self._config_error)
+        raise ValueError(f"Cannot resolve LLM provider for model '{model}'.")
 
     async def generate_content(self, prompt: str, model: Optional[str] = None) -> str:
-        if self._config_error:
-            return self._config_error
+        effective_model = model or self.model_name
+        try:
+            provider = self._get_provider(effective_model)
+        except ValueError as e:
+            logging.error(str(e))
+            return f"LLM service is misconfigured ({e})."
 
-        if not self._provider:
-            return "LLM service is currently unavailable (provider is not initialized)."
-
-        return await self._provider.generate_content(prompt=prompt, model=model)
+        return await provider.generate_content(prompt=prompt, model=effective_model)
 
     async def chat_completion(self, messages: List[Dict], model: Optional[str] = None) -> Dict:
         prompt = self._messages_to_prompt(messages)

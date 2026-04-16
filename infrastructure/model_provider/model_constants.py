@@ -26,3 +26,20 @@ HUGGINGFACE_SUPPORTED_MODELS = (
     HUGGINGFACE_QWEN2_5_7B_INSTRUCT,
     HUGGINGFACE_MISTRAL_7B_INSTRUCT,
 )
+
+GEMINI_MODEL_SET = set(GEMINI_SUPPORTED_MODELS)
+HUGGINGFACE_MODEL_SET = set(HUGGINGFACE_SUPPORTED_MODELS)
+
+PROVIDER_GEMINI = "gemini"
+PROVIDER_HUGGINGFACE = "huggingface"
+
+
+def resolve_provider_name(model):
+    if not model:
+        return None
+    if model in GEMINI_MODEL_SET:
+        return PROVIDER_GEMINI
+    if model in HUGGINGFACE_MODEL_SET:
+        return PROVIDER_HUGGINGFACE
+    # HuggingFace model ids are namespaced ("org/name"); Gemini/Gemma ids are not.
+    return PROVIDER_HUGGINGFACE if "/" in model else PROVIDER_GEMINI
