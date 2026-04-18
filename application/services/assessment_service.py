@@ -807,6 +807,56 @@ Content:
         idx = self.map_level(level)
         return LEVEL_ORDER[max(0, min(3, idx))]
 
+    def _profile_target_level(self, level: str) -> int:
+        lv = normalize_text(level).lower()
+        if not lv or lv in {"none", "0"}:
+            return 0
+        if any(k in lv for k in ["fresher", "entry", "intern", "beginner", "1"]):
+            return 1
+        if any(k in lv for k in ["junior", "2"]):
+            return 2
+        if any(k in lv for k in ["middle", "mid", "intermediate", "3"]):
+            return 3
+        if any(k in lv for k in ["senior", "lead", "staff", "principal", "advanced", "expert", "4"]):
+            return 4
+        return 2
+
+    def _to_actual_level(self, selected_level: str) -> Optional[int]:
+        raw = normalize_text(selected_level).lower()
+        if not raw:
+            return None
+        if raw in {"0", "1", "2", "3", "4"}:
+            return int(raw)
+        if raw == "none":
+            return 0
+        if raw in {"fresher", "beginner"}:
+            return 1
+        if raw in {"junior", "basic", "comfortable"}:
+            return 2
+        if raw in {"middle", "intermediate", "confident"}:
+            return 3
+        if raw in {"senior", "advanced", "expert"}:
+            return 4
+        return None
+
+    @staticmethod
+    def _achievement_score(actual_level: float, target_level: int) -> float:
+        if target_level <= 0:
+            return 0.0
+        return round(max(0.0, min(100.0, (actual_level / target_level) * 100.0)), 2)
+
+    @staticmethod
+    def _achievement_band(score_pct: float) -> str:
+        if score_pct <= 0:
+            return "None"
+        if score_pct < 25:
+            return "Fresher"
+        if score_pct < 50:
+            return "Junior"
+        if score_pct < 75:
+            return "Middle"
+        return "Senior"
+
     def _resolve_sfia_level(self, skill: str, level: str) -> int:
         ref = self._find_skill_reference(skill)
         base_level = self._base_level_label(level)
@@ -1039,46 +1089,46 @@ Output schema:
         gap_input: Optional[Dict[str, Any]] = None,
         missing_input: Optional[List[str]] = None,
     ) -> SurveySummaryResultDto:
-        rules = self._load_score_rules()
-        improve_threshold = float(rules.get("improvement_threshold", 1))
-
         answer_payload = request.answer
         answer_responses = answer_payload.responses if answer_payload else []
+
         resolved_target: Dict[str, Any] = {}
-        # Target must come from answer.profile first.
+        target_level = 0
+        role_for_target = ""
         if answer_payload and answer_payload.profile:
             profile = answer_payload.profile
+            role_for_target = normalize_text(profile.role)
+            target_level = self._profile_target_level(profile.level)
             resolved_target = {
-                "roles": [normalize_text(profile.role)] if normalize_text(profile.role) else [],
+                "roles": [role_for_target] if role_for_target else [],
                 "level": normalize_text(profile.level),
                 "skillsTarget": [normalize_text(s) for s in (profile.techstack or []) if normalize_text(s)],
             }
         elif isinstance(target_input, dict):
             resolved_target = target_input
-        elif request.target:
-            resolved_target = request.target.model_dump()
+            target_level = self._profile_target_level(str(target_input.get("level", "")))
+            role_raw = target_input.get("roles", [])
+            role_for_target = normalize_text(role_raw[0]) if isinstance(role_raw, list) and role_raw else ""
 
-        allowed_skills: List[str] = []
-        seen_allowed_skills: Set[str] = set()
-        for resp in answer_responses:
-            skill_name = normalize_text(resp.skill)
-            skill_key = skill_name.lower()
-            if skill_name and skill_key not in seen_allowed_skills:
-                allowed_skills.append(skill_name)
-                seen_allowed_skills.add(skill_key)
+        allowed_skills = self._allowed_skills_for_profile(role_for_target, resolved_target.get("level", ""))
+        if not allowed_skills:
+            seen_allowed: Set[str] = set()
+            for resp in answer_responses:
+                skill_name = normalize_text(resp.skill)
+                if skill_name and skill_name.lower() not in seen_allowed:
+                    allowed_skills.append(skill_name)
+                    seen_allowed.add(skill_name.lower())
 
         ai_items: List[Dict[str, Any]] = [
-            {
-                "key": idx,
-                "skill": item.skill,
-                "question": item.question,
-                "answer": item.answer,
-            }
+            {"key": idx, "skill": item.skill, "question": item.question, "answer": item.answer}
             for idx, item in enumerate(answer_responses)
         ]
         ai_inferred_levels = await self._infer_levels_from_answers_ai(ai_items)
 
         by_phase: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        scored_responses: List[Dict[str, Any]] = []
+        skill_actual_map: Dict[str, List[int]] = defaultdict(list)
+
         for idx, item in enumerate(answer_responses):
             phase = normalize_text(item.phase) or "general"
             mapped_skill = self._best_skill_match(
@@ -1087,154 +1137,75 @@ Output schema:
                 allowed_skills=allowed_skills,
             )
 
-            semantic = self._infer_level_from_answer(mapped_skill, item.answer)
-            semantic_idx = int(semantic["idx"])
-            semantic_conf = float(semantic["score"])
-            ai_semantic = ai_inferred_levels.get(idx)
-            ai_idx = int(ai_semantic["idx"]) if ai_semantic else 0
-            ai_conf = float(ai_semantic["score"]) if ai_semantic else 0.0
-
             selected_level_input = normalize_text(item.selectedLevel)
-            selected_idx = self.map_level(selected_level_input) if selected_level_input else None
+            selected_actual = self._to_actual_level(selected_level_input)
 
-            # If answer is off-topic or empty -> Missing.
-            if semantic_conf < 0.06 and (selected_idx is None or selected_idx == 0):
-                final_idx = ai_idx if ai_conf >= 0.35 else 0
-                status = "missing"
-            elif selected_idx is None:
-                # No FE level -> AI score is prioritized; fallback to lexical semantic.
-                if ai_conf >= 0.35:
-                    final_idx = ai_idx
-                else:
-                    final_idx = max(1, semantic_idx) if semantic_conf >= 0.06 else 0
-                status = "missing" if final_idx == 0 else "evaluated"
+            semantic = self._infer_level_from_answer(mapped_skill, item.answer)
+            semantic_actual = int(semantic["idx"]) + 1 if float(semantic["score"]) >= 0.06 else 0
+
+            ai_semantic = ai_inferred_levels.get(idx)
+            ai_actual = (int(ai_semantic["idx"]) + 1) if (ai_semantic and float(ai_semantic["score"]) >= 0.35) else 0
+
+            if selected_actual is None:
+                final_actual = max(ai_actual, semantic_actual)
             else:
-                # FE level exists -> keep that floor, allow semantic/AI to push higher.
-                final_idx = max(selected_idx, semantic_idx) if semantic_conf >= 0.06 else selected_idx
-                if ai_conf >= 0.6:
-                    final_idx = max(final_idx, ai_idx)
-                status = "missing" if final_idx == 0 else "evaluated"
+                final_actual = selected_actual
+                if max(ai_actual, semantic_actual) > 0:
+                    final_actual = max(final_actual, max(ai_actual, semantic_actual))
 
-            final_level_number = str(final_idx + 1) if final_idx > 0 else "0"
-            map_score = float(final_idx)
+            final_actual = max(0, min(4, int(final_actual)))
+            is_missing = final_actual == 0
+            score_pct = self._achievement_score(final_actual, target_level)
 
             by_phase[phase].append(
                 {
+                    "skill": mapped_skill,
+                    "actual": final_actual,
+                    "scorePct": score_pct,
+                    "missing": is_missing,
+                }
+            )
+            skill_actual_map[mapped_skill].append(final_actual)
+
+            scored_responses.append(
+                {
                     "questionId": item.questionId,
                     "question": item.question,
-                    "inputSkill": item.skill,
+                    "phase": phase,
                     "skill": mapped_skill,
                     "answer": item.answer,
-                    "selectedLevelInput": selected_level_input,
-                    "selectedLevel": final_level_number,
-                    "semanticConfidence": round(semantic_conf, 4),
-                    "blendedScore": round(map_score, 2),
-                    "sfiaLevel": self._resolve_sfia_level(mapped_skill, final_level_number),
-                    "status": status,
+                    "selectedLevel": str(final_actual),
+                    "score": score_pct,
+                    "isMissing": is_missing,
                 }
             )
 
-        summary: Dict[str, Any] = {}
         lines: List[str] = []
-        scored_responses: List[Dict[str, Any]] = []
-
         for phase, items in by_phase.items():
-            scores = [float(i["blendedScore"]) for i in items]
-            avg = round(sum(scores) / len(scores), 2) if scores else 0
-            to_improve = [i["skill"] for i in items if float(i["blendedScore"]) <= improve_threshold or i.get("status") == "missing"]
-            summary[phase] = {
-                "AverageScore": avg,
-                "AverageLevel": self._display_level(avg),
-                "Questions": [
-                    {
-                        "QuestionId": i["questionId"],
-                        "Skill": i["skill"],
-                        "InputSkill": i["inputSkill"],
-                        "SelectedLevel": i["selectedLevel"],
-                        "Score": i["blendedScore"],
-                        "SfiaLevel": i["sfiaLevel"],
-                        "SemanticConfidence": i["semanticConfidence"],
-                        "Status": i["status"],
-                    }
-                    for i in items
-                ],
-                "NeedsImprovement": to_improve,
-            }
-            scored_responses.extend(
-                [
-                    {
-                        "desc": i["skill"],
-                        "question": i["question"],
-                        "score": i["blendedScore"],
-                        "level": i["selectedLevel"],
-                        "answer": i["answer"],
-                    }
-                    for i in items
-                ]
-            )
+            avg_score = round(sum(x["scorePct"] for x in items) / len(items), 2) if items else 0.0
+            weak_skills = sorted({x["skill"] for x in items if (not x["missing"]) and x["actual"] < max(1, target_level)})
             lines.append(
-                f"{phase}: average level {self._display_level(avg)}. "
-                f"Consider improving: {', '.join(to_improve) if to_improve else 'none'}"
+                f"{phase}: average score {avg_score}%. Consider improving: {', '.join(weak_skills) if weak_skills else 'none'}"
             )
 
-        skill_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-        for phase_items in by_phase.values():
-            for item in phase_items:
-                skill_groups[item["skill"]].append(item)
-
-        skill_scores = []
-        for skill, items in skill_groups.items():
-            avg_blended = round(sum(float(i["blendedScore"]) for i in items) / len(items), 2)
-            avg_sfia = round(sum(int(i["sfiaLevel"]) for i in items) / len(items))
-            score_percent = max(0, min(100, round((avg_sfia / 5) * 100)))
-
-            skill_scores.append(
+        current_skills: List[Dict[str, Any]] = []
+        computed_missing: List[str] = []
+        computed_weak: List[str] = []
+        for skill, actuals in skill_actual_map.items():
+            avg_actual = round(sum(actuals) / len(actuals), 2)
+            avg_actual_int = int(round(avg_actual))
+            skill_score = self._achievement_score(avg_actual, target_level)
+            current_skills.append(
                 {
-                    "skillKey": skill,
-                    "status": (
-                        "missing"
-                        if avg_blended <= 0.5
-                        else "weak"
-                        if avg_blended <= 1.5
-                        else "medium"
-                        if avg_blended <= 2.5
-                        else "good"
-                    ),
-                    "score": score_percent,
-                    "sfiaLevel": avg_sfia,
-                    "selectedLevel": self._display_level(avg_blended),
+                    "skill": skill,
+                    "level": str(avg_actual_int),
+                    "score": skill_score,
                 }
             )
-
-        skill_scores.sort(key=lambda x: x["score"], reverse=True)
-
-        current_skills: List[Dict[str, Any]] = [
-            {
-                "skill": s["skillKey"],
-                "level": s["selectedLevel"],
-                "sfiaLevel": s["sfiaLevel"],
-                "score": s["score"],
-            }
-            for s in skill_scores
-        ]
-        computed_missing: List[str] = sorted(
-            {
-                item["skill"]
-                for phase_items in by_phase.values()
-                for item in phase_items
-                if item.get("status") == "missing" or float(item.get("blendedScore", 0)) <= 0
-            }
-        )
-        computed_weak: List[str] = sorted(
-            {
-                item["skill"]
-                for phase_items in by_phase.values()
-                for item in phase_items
-                if item.get("status") != "missing"
-                and float(item.get("blendedScore", 0)) <= improve_threshold
-                and float(item.get("blendedScore", 0)) > 0
-            }
-        )
+            if avg_actual_int == 0:
+                computed_missing.append(skill)
+            elif target_level > 0 and avg_actual < target_level:
+                computed_weak.append(skill)
 
         resolved_gap: Dict[str, Any] = {"weak": [], "missing": []}
         if isinstance(gap_input, dict):
@@ -1249,13 +1220,15 @@ Output schema:
             resolved_gap["missing"] = [normalize_text(x) for x in missing_input if normalize_text(x)]
 
         if not resolved_gap["weak"]:
-            resolved_gap["weak"] = computed_weak
+            resolved_gap["weak"] = sorted(set(computed_weak))
         if not resolved_gap["missing"]:
-            resolved_gap["missing"] = computed_missing
+            resolved_gap["missing"] = sorted(set(computed_missing))
 
-        overall_scores = [float(item.get("blendedScore", 0)) for phase_items in by_phase.values() for item in phase_items]
-        overall_score = round((sum(overall_scores) / len(overall_scores)) * 25, 2) if overall_scores else 0.0
-        overall_level = self._display_level(round((sum(overall_scores) / len(overall_scores)), 2)) if overall_scores else "None"
+        overall_score = round(
+            sum(x["score"] for x in scored_responses) / len(scored_responses),
+            2,
+        ) if scored_responses else 0.0
+        overall_level = self._achievement_band(overall_score)
 
         scored_answer = {
             "profile": answer_payload.profile.model_dump() if answer_payload and answer_payload.profile else {},
@@ -1264,22 +1237,17 @@ Output schema:
             "overallLevel": overall_level,
         }
 
-        missing_output = resolved_gap["missing"]
-        weak_output = resolved_gap["weak"]
-        if missing_output:
-            lines.append(f"Missing skills (from gap): {', '.join(missing_output)}")
-        if weak_output:
-            lines.append(f"Weak skills (from gap): {', '.join(weak_output)}")
+        if resolved_gap["missing"]:
+            lines.append(f"Missing skills (from gap): {', '.join(resolved_gap['missing'])}")
 
         return SurveySummaryResultDto(
             userId=request.userId,
             summaryText="\n".join(lines),
             answer=scored_answer,
             target=resolved_target,
-            current={"skills": current_skills},
+            current={"skills": sorted(current_skills, key=lambda x: x["skill"])},
             gapJson={
-                "weak": weak_output,
-                "missing": missing_output,
+                "missing": resolved_gap["missing"],
             },
         )
 

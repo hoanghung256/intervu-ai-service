@@ -161,7 +161,7 @@ class SurveySummaryResultDto(BaseModel):
     answer: Dict[str, Any] = Field(default_factory=dict)
     target: Dict[str, Any] = Field(default_factory=dict)
     current: Dict[str, Any] = Field(default_factory=dict)
-    gapJson: Dict[str, List[str]] = Field(default_factory=lambda: {"weak": [], "missing": []})
+    gapJson: Dict[str, List[str]] = Field(default_factory=lambda: {"missing": []})
 
 
 class EvaluateAssessmentRequestDto(BaseModel):
