@@ -1,11 +1,14 @@
 import json
-import os
 import logging
 import re
-from typing import Any, Dict, List, Set, Union
+from collections import defaultdict
+from pathlib import Path
+from time import perf_counter
+from typing import Any, Dict, List, Optional, Set, Union
+
+from api.dtos import AssessmentRequest, SurveyAnswerJsonDto, SurveyResponsesDto, SurveySummaryResultDto
 from infrastructure.model_provider.llm_provider import LLMProvider
-from infrastructure.model_provider.model_constants import HUGGINGFACE_DEFAULT_MODEL
-from api.dtos import AssessmentRequest
+from infrastructure.model_provider.model_constants import GEMINI_GEMMA_3_27B_IT
 
 CONTRACTIONS = {
     "i'm": "i am",
@@ -29,7 +32,15 @@ CONTRACTIONS = {
     "we've": "we have",
     "they've": "they have",
 }
-CONTRACTIONS_PATTERN = re.compile(r"\b(" + "|".join(re.escape(k) for k in CONTRACTIONS.keys()) + r")\b", flags=re.IGNORECASE)
+CONTRACTIONS_PATTERN = re.compile(
+    r"\b(" + "|".join(re.escape(k) for k in CONTRACTIONS.keys()) + r")\b",
+    flags=re.IGNORECASE,
+)
+
+
+LEVEL_ORDER = ["none", "basic", "intermediate", "advanced"]
+LEVEL_KEY_BY_INDEX = ["1", "2", "3", "4"]
+
 
 def normalize_text(text: Union[str, None]) -> str:
     if not text:
@@ -39,178 +50,411 @@ def normalize_text(text: Union[str, None]) -> str:
     txt = re.sub(r"\s+", " ", txt).strip()
     return txt
 
+
 class AssessmentService:
-    _skill_reference = None
-    PHASE_A_LEVELS = ["None", "Basic", "Intermediate", "Advanced"]
-    PHASE_B_LEVELS = ["Beginner", "Comfortable", "Confident", "Expert"]
+    _role_skill_framework: Optional[Dict[str, Any]] = None
+    _score_rules: Optional[Dict[str, Any]] = None
+    _skill_reference: Optional[Any] = None
+    _skill_reference_index: Optional[Dict[str, Dict[str, Any]]] = None
+
+    PHASE_A_LEVELS = ["1", "2", "3", "4"]
+    PHASE_B_LEVELS = ["1", "2", "3", "4"]
 
     def __init__(self, llm_provider: LLMProvider):
         self.llm_provider = llm_provider
         self.logger = logging.getLogger(__name__)
+        self._repo_root = Path(__file__).resolve().parents[2]
 
     @classmethod
-    def _load_skill_reference(cls):
-        if cls._skill_reference is None:
-            path = os.path.join(os.getcwd(), "skill-references.json")
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    cls._skill_reference = json.load(f)
-            except Exception as e:
-                logging.error(f"Failed to load skill-references.json: {e}")
-                cls._skill_reference = []
-        return cls._skill_reference
+    def _load_json_file(cls, path: Path, fallback: Any) -> Any:
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as ex:
+            logging.error(f"Failed to load JSON file {path}: {ex}")
+            return fallback
+
+    def _load_role_skill_framework(self) -> Dict[str, Any]:
+        if self.__class__._role_skill_framework is None:
+            path = self._repo_root / "role-skill-framework.json"
+            self.__class__._role_skill_framework = self._load_json_file(path, {})
+        return self.__class__._role_skill_framework or {}
+
+    def _load_score_rules(self) -> Dict[str, Any]:
+        if self.__class__._score_rules is None:
+            path = self._repo_root / "assessment-score-rules.json"
+            self.__class__._score_rules = self._load_json_file(path, {})
+        return self.__class__._score_rules or {}
+
+    def _load_skill_reference(self) -> Any:
+        if self.__class__._skill_reference is None:
+            path = self._repo_root / "skill-references.json"
+            self.__class__._skill_reference = self._load_json_file(path, {})
+        return self.__class__._skill_reference or {}
+
+    def _iter_skill_reference_items(self) -> List[Dict[str, Any]]:
+        data = self._load_skill_reference()
+        items: List[Dict[str, Any]] = []
+
+        if isinstance(data, list):
+            items.extend([x for x in data if isinstance(x, dict)])
+            return items
+
+        if not isinstance(data, dict):
+            return items
+
+        if isinstance(data.get("skills"), list):
+            for skill in data.get("skills", []):
+                if isinstance(skill, dict):
+                    items.append(skill)
+            return items
+
+        for role_payload in data.values():
+            if not isinstance(role_payload, dict):
+                continue
+            skills = role_payload.get("skills")
+            if not isinstance(skills, list):
+                continue
+            for skill in skills:
+                if isinstance(skill, dict):
+                    items.append(skill)
+        return items
+
+    def _extract_level_descriptions(self, ref: Optional[Dict[str, Any]]) -> Dict[str, str]:
+        if not isinstance(ref, dict):
+            return {}
+
+        levels = ref.get("levels")
+        descriptions: Dict[str, str] = {}
+
+        if isinstance(levels, list):
+            for level_item in levels:
+                if not isinstance(level_item, dict):
+                    continue
+                level_label = normalize_text(level_item.get("level")).lower()
+                description = normalize_text(level_item.get("description") or level_item.get("text"))
+                if not level_label or not description:
+                    continue
+                idx = self.map_level(level_label)
+                descriptions[LEVEL_ORDER[idx]] = description
+            return descriptions
+
+        if isinstance(levels, dict):
+            for level_key, value in levels.items():
+                level_label = normalize_text(str(level_key)).lower()
+                description = normalize_text(value if isinstance(value, str) else value.get("description", ""))
+                if not level_label or not description:
+                    continue
+                idx = self.map_level(level_label)
+                descriptions[LEVEL_ORDER[idx]] = description
+
+        return descriptions
+
+    def _get_skill_reference_index(self) -> Dict[str, Dict[str, Any]]:
+        if self.__class__._skill_reference_index is not None:
+            return self.__class__._skill_reference_index
+
+        index: Dict[str, Dict[str, Any]] = {}
+        for item in self._iter_skill_reference_items():
+            name = normalize_text(item.get("name")).lower()
+            if not name:
+                continue
+            index[name] = item
+
+        self.__class__._skill_reference_index = index
+        return index
 
     @staticmethod
     def _to_list(value: Any) -> List[str]:
         if value is None:
             return []
         if isinstance(value, (list, tuple)):
-            return [str(v).strip() for v in value if str(v).strip()]
-        txt = str(value).strip()
+            return [normalize_text(v) for v in value if normalize_text(v)]
+        txt = normalize_text(str(value))
         return [txt] if txt else []
 
-    def _build_skill_source_for_prompt(self, request: AssessmentRequest, skill_reference: Any) -> List[Dict[str, str]]:
-        if not isinstance(skill_reference, list):
-            return []
-
-        role = normalize_text(request.role).lower()
-        tech_items = [t.lower() for t in self._to_list(request.techstack)]
-
-        target_categories: Set[str] = set()
-        if any(k in role for k in ["front", "ui", "web"]):
-            target_categories.update(["Frontend", "Fullstack"])
-        if any(k in role for k in ["back", "api", "server"]):
-            target_categories.update(["Backend", "Fullstack"])
-        if any(k in role for k in ["data", "ml", "ai"]):
-            target_categories.update(["Data", "AI"])
-        if any(k in role for k in ["devops", "infra", "platform", "sre"]):
-            target_categories.update(["DevOps"])
-        if any(k in role for k in ["mobile", "android", "ios"]):
-            target_categories.update(["Mobile"])
-        if any(k in role for k in ["qa", "test"]):
-            target_categories.update(["QA", "Testing"])
-
-        for tech in tech_items:
-            if any(k in tech for k in ["react", "angular", "vue", "typescript", "javascript", "html", "css"]):
-                target_categories.update(["Frontend", "Fullstack"])
-            if any(k in tech for k in ["node", "java", "python", "dotnet", "c#", "go", "postgres", "mysql", "mongo", "redis", "sql"]):
-                target_categories.update(["Backend", "Fullstack", "Data"])
-
-        compact_all = [
-            {
-                "name": str(item.get("name", "")).strip(),
-                "category": str(item.get("category", "General")).strip() or "General",
-            }
-            for item in skill_reference
-            if isinstance(item, dict) and str(item.get("name", "")).strip()
-        ]
-
-        if not compact_all:
-            return []
-
-        if not target_categories:
-            return compact_all[:40]
-
-        matched = [s for s in compact_all if s.get("category") in target_categories]
-        if len(matched) < 20:
-            needed = 40 - len(matched)
-            extras = [s for s in compact_all if s not in matched][:max(0, needed)]
-            matched.extend(extras)
-        return matched[:40]
+    @staticmethod
+    def _tokenize(value: str) -> Set[str]:
+        return {t for t in re.findall(r"[a-z0-9\+#\.]+", normalize_text(value).lower()) if len(t) >= 2}
 
     @staticmethod
-    def _normalize_options(raw_options: Any, levels: List[str]) -> List[Dict[str, str]]:
-        level_index = {lvl.lower(): i for i, lvl in enumerate(levels)}
-        by_level: List[str] = [""] * len(levels)
+    def _level_key_for_index(idx: int) -> str:
+        idx = max(0, min(3, idx))
+        return LEVEL_KEY_BY_INDEX[idx]
 
-        if isinstance(raw_options, list):
-            for idx, opt in enumerate(raw_options):
-                if not isinstance(opt, dict):
-                    continue
-                text = normalize_text(opt.get("text"))
-                lvl = normalize_text(opt.get("level")).lower()
-                if lvl in level_index:
-                    by_level[level_index[lvl]] = text or by_level[level_index[lvl]]
-                elif idx < len(by_level) and text and not by_level[idx]:
-                    by_level[idx] = text
+    def _normalize_role_key(self, role: str, framework: Dict[str, Any]) -> str:
+        role_normalized = normalize_text(role).lower()
+        role_aliases = framework.get("role_aliases", {}) if isinstance(framework, dict) else {}
+        role_definitions = framework.get("role_definitions", {}) if isinstance(framework, dict) else {}
 
-        return [
-            {
-                "text": by_level[i] or f"Can demonstrate {levels[i].lower()} capability in this scenario.",
-                "level": levels[i],
-            }
-            for i in range(len(levels))
-        ]
+        if role_normalized in role_definitions:
+            return role_normalized
+        if role_normalized in role_aliases:
+            return role_aliases[role_normalized]
+
+        for alias, canonical in role_aliases.items():
+            if alias in role_normalized:
+                return canonical
+
+        if "front" in role_normalized:
+            return "frontend_engineer"
+        if "devops" in role_normalized or "sre" in role_normalized:
+            return "devops_engineer"
+        if "qa" in role_normalized or "test" in role_normalized:
+            return "qa_engineer"
+        if "architect" in role_normalized:
+            return "solution_architect"
+        if "data" in role_normalized or "database" in role_normalized:
+            return "database_designer"
+        return "backend_engineer"
 
     @staticmethod
-    def _fallback_question(skill: str, techstack_str: str, phase: str) -> str:
-        if phase == "phaseA":
-            return f"In a {techstack_str or 'project'} task, how would you apply {skill} to deliver a working feature?"
-        return f"For your next growth step in {techstack_str or 'this stack'}, how would you strengthen {skill} in a real production scenario?"
+    def _normalize_level_key(level: str) -> str:
+        lvl = normalize_text(level).lower()
+        if not lvl:
+            return "junior"
+        if any(k in lvl for k in ["fresher", "entry", "intern", "new grad", "beginner"]):
+            return "fresher"
+        if any(k in lvl for k in ["junior", "basic"]):
+            return "junior"
+        if any(k in lvl for k in ["middle", "mid", "intermediate"]):
+            return "middle"
+        if any(k in lvl for k in ["senior", "lead", "staff", "principal", "advanced", "expert"]):
+            return "senior"
+        return "junior"
+
+    def _find_skill_reference(self, skill_name: str) -> Optional[Dict[str, Any]]:
+        skill_key = normalize_text(skill_name).lower()
+        index = self._get_skill_reference_index()
+        if skill_key in index:
+            return index[skill_key]
+
+        for ref_key, ref in index.items():
+            if skill_key in ref_key or ref_key in skill_key:
+                return ref
+        return None
+
+    def _get_role_skills(self, role_key: str, level_key: str, framework: Dict[str, Any]) -> List[Dict[str, Any]]:
+        role_definitions = framework.get("role_definitions", {}) if isinstance(framework, dict) else {}
+        role_data = role_definitions.get(role_key, {}) if isinstance(role_definitions, dict) else {}
+        if not isinstance(role_data, dict):
+            return []
+
+        if level_key in role_data and isinstance(role_data[level_key], list):
+            return role_data[level_key]
+
+        for fallback in ["junior", "middle", "senior", "fresher"]:
+            if fallback in role_data and isinstance(role_data[fallback], list):
+                return role_data[fallback]
+        return []
+
+    def _prioritize_skills(
+        self,
+        role_skills: List[Dict[str, Any]],
+        techstack: List[str],
+        domain: List[str],
+        free_text: str,
+    ) -> List[Dict[str, Any]]:
+        free_tokens = self._tokenize(free_text)
+        tech_tokens = self._tokenize(" ".join(techstack))
+        domain_tokens = self._tokenize(" ".join(domain))
+
+        scored: List[Dict[str, Any]] = []
+        for item in role_skills:
+            skill_name = normalize_text(item.get("skill"))
+            if not skill_name:
+                continue
+
+            skill_tokens = self._tokenize(skill_name)
+            score = 0
+
+            if free_tokens and (skill_tokens & free_tokens):
+                score += 50
+            if tech_tokens and (skill_tokens & tech_tokens):
+                score += 30
+            if domain_tokens and (skill_tokens & domain_tokens):
+                score += 20
+
+            min_level = int(item.get("min_level") or 1)
+            score += min_level
+
+            scored.append({
+                "skill": skill_name,
+                "min_level": min_level,
+                "priority_score": score,
+            })
+
+        scored.sort(key=lambda x: (x["priority_score"], x["min_level"]), reverse=True)
+        return scored
+
+    def _build_options_from_skill_levels(self, skill_name: str, phase: str) -> List[Dict[str, str]]:
+        ref = self._find_skill_reference(skill_name)
+        phase_levels = self.PHASE_A_LEVELS if phase == "phaseA" else self.PHASE_B_LEVELS
+
+        descriptions_by_level: Dict[str, str] = {}
+        if ref:
+            descriptions_by_level = self._extract_level_descriptions(ref)
+
+        options: List[Dict[str, str]] = []
+        for idx, phase_level in enumerate(phase_levels):
+            base_level = LEVEL_ORDER[idx]
+            text = descriptions_by_level.get(base_level)
+            if not text:
+                text = f"Can demonstrate {base_level} capability in {skill_name}."
+            options.append({"text": text, "level": phase_level})
+
+        return options
+
+    @staticmethod
+    def _fallback_question(skill: str, techstack_str: str, practical: bool = False) -> str:
+        if practical:
+            return (
+                f"In a production incident on {techstack_str or 'your current stack'}, "
+                f"how would you apply {skill} to resolve the issue with minimal risk?"
+            )
+        return f"How do you apply {skill} in day-to-day delivery for a {techstack_str or 'real project'}?"
 
     def _normalize_phase(
         self,
         items: Any,
         target_count: int,
-        levels: List[str],
-        fallback_skills: List[str],
+        skill_pool: List[str],
         techstack_str: str,
         phase: str,
         avoid_skills: Set[str],
     ) -> List[Dict[str, Any]]:
         normalized: List[Dict[str, Any]] = []
         seen_questions: Set[str] = set()
-        available_skills = [s for s in fallback_skills if s and s not in avoid_skills] or fallback_skills or ["Problem Solving"]
-        skill_cursor = 0
 
+        allowed_skills = [s for s in skill_pool if s]
+        if not allowed_skills:
+            allowed_skills = ["Problem Solving"]
+
+        cursor = 0
         raw_items = items if isinstance(items, list) else []
+
         for raw in raw_items:
             if not isinstance(raw, dict):
                 continue
 
             skill = normalize_text(raw.get("skill"))
             question = normalize_text(raw.get("question"))
-            if not skill:
-                skill = available_skills[skill_cursor % len(available_skills)]
-                skill_cursor += 1
+
+            if skill not in allowed_skills:
+                skill = allowed_skills[cursor % len(allowed_skills)]
+                cursor += 1
+
+            if phase == "phaseB" and skill.lower() in avoid_skills:
+                candidates = [s for s in allowed_skills if s.lower() not in avoid_skills]
+                if candidates:
+                    skill = candidates[cursor % len(candidates)]
+                    cursor += 1
+
             if not question:
-                question = self._fallback_question(skill, techstack_str, phase)
+                question = self._fallback_question(skill, techstack_str, practical=(phase == "phaseB"))
+
             if question in seen_questions:
                 continue
-
-            if phase == "phaseB" and skill in avoid_skills:
-                replacement_candidates = [s for s in available_skills if s not in avoid_skills]
-                if replacement_candidates:
-                    skill = replacement_candidates[skill_cursor % len(replacement_candidates)]
-                    skill_cursor += 1
 
             normalized.append(
                 {
                     "skill": skill,
                     "question": question,
-                    "options": self._normalize_options(raw.get("options"), levels),
+                    "options": self._build_options_from_skill_levels(skill, phase),
                 }
             )
             seen_questions.add(question)
+
             if len(normalized) >= target_count:
                 return normalized
 
         while len(normalized) < target_count:
-            skill = available_skills[skill_cursor % len(available_skills)]
-            skill_cursor += 1
-            question = self._fallback_question(skill, techstack_str, phase)
+            skill = allowed_skills[cursor % len(allowed_skills)]
+            cursor += 1
+
+            if phase == "phaseB" and skill.lower() in avoid_skills:
+                candidates = [s for s in allowed_skills if s.lower() not in avoid_skills]
+                if candidates:
+                    skill = candidates[cursor % len(candidates)]
+                    cursor += 1
+
+            question = self._fallback_question(skill, techstack_str, practical=(phase == "phaseB"))
             if question in seen_questions:
-                question = f"{question} (Focus area {len(normalized) + 1})"
+                question = f"{question} (Scenario {len(normalized) + 1})"
+
             normalized.append(
                 {
                     "skill": skill,
                     "question": question,
-                    "options": self._normalize_options([], levels),
+                    "options": self._build_options_from_skill_levels(skill, phase),
                 }
             )
             seen_questions.add(question)
 
         return normalized
+
+    def _build_prompt_skill_payload(self, prioritized_skills: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        payload: List[Dict[str, Any]] = []
+        for skill_item in prioritized_skills:
+            skill_name = skill_item.get("skill", "")
+            ref = self._find_skill_reference(skill_name)
+            levels: Dict[str, str] = {}
+            descriptions = self._extract_level_descriptions(ref) if ref else {}
+            for idx, level_name in enumerate(LEVEL_ORDER):
+                levels[self._level_key_for_index(idx)] = descriptions.get(
+                    level_name,
+                    f"Can demonstrate {level_name} capability in {skill_name}.",
+                )
+
+            payload.append(
+                {
+                    "name": skill_name,
+                    "min_level": int(skill_item.get("min_level") or 1),
+                    "levels": levels,
+                }
+            )
+        return payload
+
+    @staticmethod
+    def _build_question_templates(practical: bool) -> List[str]:
+        if practical:
+            return [
+                "Your team reports a production issue in {skill}. How would you diagnose and fix it in {stack}?",
+                "A high-traffic release in {domain} stresses {skill}. What trade-offs would you make first?",
+                "How would you design a resilient approach for {skill} to reduce incidents in {stack}?",
+                "In a post-mortem for {skill}, what actions would you prioritize for the next sprint?",
+                "How would you prevent recurring failures related to {skill} in a real production workflow?",
+            ]
+        return [
+            "How do you apply {skill} in day-to-day engineering work for {stack}?",
+            "What is your standard approach for implementing {skill} in a feature delivery cycle?",
+            "How do you validate quality and correctness when working on {skill}?",
+            "Which design decisions matter most when applying {skill} in {domain} systems?",
+            "How would you explain your practical implementation process for {skill}?",
+        ]
+
+    def _build_rule_based_phase_items(
+        self,
+        skill_pool: List[str],
+        target_count: int,
+        practical: bool,
+        techstack_str: str,
+        domain_items: List[str],
+    ) -> List[Dict[str, str]]:
+        skills = [s for s in skill_pool if s] or ["Problem Solving"]
+        templates = self._build_question_templates(practical=practical)
+        domain_text = ", ".join(domain_items) if domain_items else "general"
+        stack_text = techstack_str or "your current stack"
+
+        items: List[Dict[str, str]] = []
+        for idx in range(target_count):
+            skill = skills[idx % len(skills)]
+            template = templates[idx % len(templates)]
+            question = template.format(skill=skill, stack=stack_text, domain=domain_text)
+            if idx >= len(skills):
+                question = f"{question} (Focus {idx + 1})"
+            items.append({"skill": skill, "question": question})
+        return items
 
     def is_empty_request(self, req: AssessmentRequest):
         def _empty(v):
@@ -220,103 +464,141 @@ class AssessmentService:
                 s = normalize_text(v)
                 return s == "" or s.lower() == "string"
             if isinstance(v, (list, tuple)):
-                def _elem_empty(x):
-                    nx = normalize_text(x)
-                    return not nx or nx.lower() == "string"
-                return all(_elem_empty(x) for x in v)
+                return all((normalize_text(x) == "" or normalize_text(x).lower() == "string") for x in v)
             return False
 
-        return (
-            _empty(req.role) and
-            _empty(req.level) and
-            _empty(req.techstack) and
-            _empty(req.free_text)
-        )
+        return _empty(req.role) and _empty(req.level) and _empty(req.techstack) and _empty(req.free_text)
 
     async def generate_assessment(self, request: AssessmentRequest):
+        total_start = perf_counter()
         logging.info(f"Generating assessment for role: {request.role}, level: {request.level}")
-        
-        skill_reference = self._load_skill_reference()
-        skill_source = self._build_skill_source_for_prompt(request, skill_reference)
-        skill_reference_str = json.dumps(skill_source, separators=(",", ":"), ensure_ascii=False)
+        timings_ms: Dict[str, float] = {}
 
-        techstack_str = (
-            ", ".join(request.techstack) if isinstance(request.techstack, (list, tuple)) else (request.techstack or "")
-        )
-        domain_str = (
-            ", ".join(request.domain) if isinstance(request.domain, (list, tuple)) else (request.domain or "")
-        )
+        t0 = perf_counter()
+        framework = self._load_role_skill_framework()
+        score_rules = self._load_score_rules()
 
-        free_text_normalized = normalize_text(request.free_text)
+        role_key = self._normalize_role_key(request.role or "", framework)
+        level_key = self._normalize_level_key(request.level or "")
+        role_skills = self._get_role_skills(role_key, level_key, framework)
 
+        tech_items = self._to_list(request.techstack)
+        domain_items = self._to_list(request.domain)
+        free_text = normalize_text(request.free_text)
+
+        prioritized_skills = self._prioritize_skills(role_skills, tech_items, domain_items, free_text)
+        if not prioritized_skills:
+            prioritized_skills = [
+                {"skill": item.get("name", "General Skill"), "min_level": 1, "priority_score": 0}
+                for item in self._iter_skill_reference_items()[:10]
+            ]
+
+        core_count = int(score_rules.get("question_plan", {}).get("core_count", 10))
+        practical_count = int(score_rules.get("question_plan", {}).get("practical_count", 5))
+        techstack_str = ", ".join(tech_items)
+        domain_str = ", ".join(domain_items)
+        fallback_skills = [normalize_text(s.get("skill")) for s in prioritized_skills if normalize_text(s.get("skill"))]
+        timings_ms["prepare_inputs"] = round((perf_counter() - t0) * 1000, 3)
+
+        generation_mode = "llm"
+        data: Dict[str, Any] = {}
+
+        t0 = perf_counter()
+        skill_payload = self._build_prompt_skill_payload(prioritized_skills)
+        skill_payload_str = json.dumps(skill_payload, separators=(",", ":"), ensure_ascii=False)
         prompt = f"""
 Return ONE valid JSON object only.
 
 Input:
-- role: {request.role}
-- level: {request.level}
+- role_key: {role_key}
+- role_level: {level_key}
 - techstack: {techstack_str}
 - domain: {domain_str}
-- user_intent: {free_text_normalized}
+- user_intent: {free_text}
 
-Allowed skills (name/category only):
-{skill_reference_str}
+Role skills and level semantics:
+{skill_payload_str}
 
 Requirements:
-- Total questions = 20 exactly.
-- phaseA length = 15 exactly; options levels = None, Basic, Intermediate, Advanced.
-- phaseB length = 5 exactly; options levels = Beginner, Comfortable, Confident, Expert.
-- Questions must be practical and scenario-based.
-- Use only tech from techstack input.
-- Use only skills from allowed skills.
-- phaseB skills should not duplicate phaseA skills when possible.
-- No markdown fences, no comments.
+- Total questions = {core_count + practical_count}.
+- phaseA length = {core_count} (core skills).
+- phaseB length = {practical_count} (practical scenarios).
+- Use only the listed role skills.
+- Keep questions concrete and production-oriented.
+- Do not return markdown or comments.
 
 Output schema:
 {{
   "contextQuestion": "",
-  "phaseA": [{{"skill": "", "question": "", "options": [{{"text": "", "level": "None"}}, {{"text": "", "level": "Basic"}}, {{"text": "", "level": "Intermediate"}}, {{"text": "", "level": "Advanced"}}]}}],
-  "phaseB": [{{"skill": "", "question": "", "options": [{{"text": "", "level": "Beginner"}}, {{"text": "", "level": "Comfortable"}}, {{"text": "", "level": "Confident"}}, {{"text": "", "level": "Expert"}}]}}]
+  "phaseA": [{{"skill": "", "question": ""}}],
+  "phaseB": [{{"skill": "", "question": ""}}]
 }}
 """
-        response_text = await self.llm_provider.generate_content(
-            prompt=prompt,
-            model=HUGGINGFACE_DEFAULT_MODEL
-        )
+        timings_ms["build_prompt"] = round((perf_counter() - t0) * 1000, 3)
 
-        self.logger.info("LLM response received for assessment generation")
+        if self.llm_provider and hasattr(self.llm_provider, "generate_content"):
+            t0 = perf_counter()
+            response_text = await self.llm_provider.generate_content(
+                prompt=prompt,
+                model=GEMINI_GEMMA_3_27B_IT,
+            )
+            timings_ms["llm_generate"] = round((perf_counter() - t0) * 1000, 3)
 
-        async def _parse_or_repair(candidate_text: str, context: str) -> dict:
-            cleaned = self.llm_provider.clean_json_string(candidate_text)
-            try:
-                return json.loads(cleaned)
-            except json.JSONDecodeError as ex:
-                self.logger.warning(f"JSON parse failed in {context}: {ex}")
-                repair_prompt = f"""
-Convert this to one strict valid JSON object only.
+            async def _parse_or_repair(candidate_text: str, context: str) -> dict:
+                parse_start = perf_counter()
+                cleaned = self.llm_provider.clean_json_string(candidate_text)
+                try:
+                    parsed = json.loads(cleaned)
+                    timings_ms["parse_json"] = round((perf_counter() - parse_start) * 1000, 3)
+                    return parsed
+                except json.JSONDecodeError as ex:
+                    self.logger.warning(f"JSON parse failed in {context}: {ex}")
+                    repair_prompt = f"""
+Convert this content to one strict valid JSON object only.
 Use double quotes, no markdown, no comments, no trailing commas.
 
 Content:
 {cleaned}
 """
-                repaired_text = await self.llm_provider.generate_content(
-                    prompt=repair_prompt,
-                    model=HUGGINGFACE_DEFAULT_MODEL
-                )
-                repaired_json = self.llm_provider.clean_json_string(repaired_text)
-                return json.loads(repaired_json)
+                    repair_start = perf_counter()
+                    repaired_text = await self.llm_provider.generate_content(
+                        prompt=repair_prompt,
+                        model=GEMINI_GEMMA_3_27B_IT,
+                    )
+                    timings_ms["llm_repair"] = round((perf_counter() - repair_start) * 1000, 3)
+                    repaired_json = self.llm_provider.clean_json_string(repaired_text)
+                    parsed = json.loads(repaired_json)
+                    timings_ms["parse_json"] = round((perf_counter() - parse_start) * 1000, 3)
+                    return parsed
 
-        data = await _parse_or_repair(response_text, "initial assessment generation")
+            parsed_data = await _parse_or_repair(response_text, "assessment generation")
+            data = parsed_data if isinstance(parsed_data, dict) else {}
+        else:
+            generation_mode = "rule_based_fallback"
+            timings_ms["llm_generate"] = 0.0
+            data = {
+                "contextQuestion": "",
+                "phaseA": self._build_rule_based_phase_items(
+                    skill_pool=fallback_skills,
+                    target_count=core_count,
+                    practical=False,
+                    techstack_str=techstack_str,
+                    domain_items=domain_items,
+                ),
+                "phaseB": self._build_rule_based_phase_items(
+                    skill_pool=fallback_skills,
+                    target_count=practical_count,
+                    practical=True,
+                    techstack_str=techstack_str,
+                    domain_items=domain_items,
+                ),
+            }
 
-        if not isinstance(data, dict):
-            data = {}
-
-        fallback_skills = [s.get("name", "") for s in skill_source if isinstance(s, dict) and s.get("name")]
+        t0 = perf_counter()
         phase_a = self._normalize_phase(
             items=data.get("phaseA"),
-            target_count=15,
-            levels=self.PHASE_A_LEVELS,
-            fallback_skills=fallback_skills,
+            target_count=core_count,
+            skill_pool=fallback_skills,
             techstack_str=techstack_str,
             phase="phaseA",
             avoid_skills=set(),
@@ -324,24 +606,510 @@ Content:
         phase_a_skills = {normalize_text(item.get("skill")).lower() for item in phase_a}
         phase_b = self._normalize_phase(
             items=data.get("phaseB"),
-            target_count=5,
-            levels=self.PHASE_B_LEVELS,
-            fallback_skills=fallback_skills,
+            target_count=practical_count,
+            skill_pool=fallback_skills,
             techstack_str=techstack_str,
             phase="phaseB",
             avoid_skills=phase_a_skills,
         )
+        timings_ms["normalize_output"] = round((perf_counter() - t0) * 1000, 3)
 
-        data = {
-            "contextQuestion": normalize_text(data.get("contextQuestion")) or "Tell us about a recent technical challenge you solved.",
+        elapsed_ms = round((perf_counter() - total_start) * 1000, 3)
+        slowest_stage = max(timings_ms, key=timings_ms.get) if timings_ms else None
+
+        result = {
+            "contextQuestion": normalize_text(data.get("contextQuestion"))
+            or "Tell us about a recent technical challenge you solved.",
             "phaseA": phase_a,
             "phaseB": phase_b,
+            "metadata": {
+                "roleKey": role_key,
+                "levelKey": level_key,
+                "coreCount": core_count,
+                "practicalCount": practical_count,
+                "generationMode": generation_mode,
+                "generationModel": GEMINI_GEMMA_3_27B_IT if generation_mode == "llm" else None,
+                "executionMs": elapsed_ms,
+                "timingsMs": timings_ms,
+                "slowestStage": slowest_stage,
+            },
         }
 
-        if len(data.get("phaseA", [])) != 15:
+        if len(result.get("phaseA", [])) != core_count:
             raise Exception("Invalid Phase A")
-
-        if len(data.get("phaseB", [])) != 5:
+        if len(result.get("phaseB", [])) != practical_count:
             raise Exception("Invalid Phase B")
 
-        return data
+        if slowest_stage:
+            self.logger.info(
+                "Assessment generation timing: total=%sms, slowest=%s(%sms)",
+                elapsed_ms,
+                slowest_stage,
+                timings_ms.get(slowest_stage, 0.0),
+            )
+
+        return result
+
+    def _level_alias_map(self) -> Dict[str, int]:
+        rules = self._load_score_rules()
+        aliases = rules.get("level_aliases", {}) if isinstance(rules, dict) else {}
+        output: Dict[str, int] = {}
+        for key, value in aliases.items():
+            output[normalize_text(key).lower()] = int(value)
+        if not output:
+            output = {
+                "none": 0,
+                "basic": 1,
+                "intermediate": 2,
+                "advanced": 3,
+                "beginner": 0,
+                "comfortable": 1,
+                "confident": 2,
+                "expert": 3,
+                "1": 0,
+                "2": 1,
+                "3": 2,
+                "4": 3,
+            }
+        return output
+
+    def map_level(self, level: str) -> int:
+        aliases = self._level_alias_map()
+        return aliases.get(normalize_text(level).lower(), 0)
+
+    def _display_level(self, score: float) -> str:
+        rules = self._load_score_rules()
+        thresholds = rules.get("score_thresholds", {}) if isinstance(rules, dict) else {}
+        none_max = float(thresholds.get("none_max", 0.5))
+        basic_max = float(thresholds.get("basic_max", 1.5))
+        intermediate_max = float(thresholds.get("intermediate_max", 2.5))
+
+        if score <= none_max:
+            return "None"
+        if score <= basic_max:
+            return "Basic"
+        if score <= intermediate_max:
+            return "Intermediate"
+        return "Advanced"
+
+    def _base_level_label(self, level: str) -> str:
+        idx = self.map_level(level)
+        return LEVEL_ORDER[max(0, min(3, idx))]
+
+    def _resolve_sfia_level(self, skill: str, level: str) -> int:
+        ref = self._find_skill_reference(skill)
+        base_level = self._base_level_label(level)
+
+        if ref and isinstance(ref.get("levels"), list):
+            for level_item in ref["levels"]:
+                if not isinstance(level_item, dict):
+                    continue
+                if normalize_text(level_item.get("level")).lower() == base_level:
+                    try:
+                        return int(level_item.get("sfia") or 0)
+                    except Exception:
+                        return 0
+
+        rules = self._load_score_rules()
+        fallback = rules.get("sfia_fallback", {}) if isinstance(rules, dict) else {}
+        mapped = self.map_level(level)
+        if str(mapped) in fallback:
+            return int(fallback[str(mapped)])
+        return {0: 0, 1: 2, 2: 3, 3: 5}.get(mapped, 0)
+
+    def _semantic_answer_score(self, skill: str, selected_level: str, answer_text: str) -> float:
+        ref = self._find_skill_reference(skill)
+        if not ref:
+            return float(self.map_level(selected_level))
+
+        target_label = self._base_level_label(selected_level)
+        selected_desc = self._extract_level_descriptions(ref).get(target_label, "")
+
+        if not selected_desc:
+            return float(self.map_level(selected_level))
+
+        answer_tokens = self._tokenize(answer_text)
+        desc_tokens = self._tokenize(selected_desc)
+        if not answer_tokens or not desc_tokens:
+            return float(self.map_level(selected_level))
+
+        overlap = len(answer_tokens & desc_tokens)
+        ratio = overlap / max(1, len(desc_tokens))
+        semantic_score = min(3.0, round(ratio * 6, 2))
+        return semantic_score
+
+    def _allowed_skills_for_profile(self, role: str, level: str) -> List[str]:
+        framework = self._load_role_skill_framework()
+        role_key = self._normalize_role_key(role or "", framework)
+        level_key = self._normalize_level_key(level or "")
+        role_skills = self._get_role_skills(role_key, level_key, framework)
+        collected: List[str] = [
+            normalize_text(item.get("skill"))
+            for item in role_skills
+            if isinstance(item, dict) and normalize_text(item.get("skill"))
+        ]
+
+        # Fallback/merge from role-specific skill references.
+        skill_ref = self._load_skill_reference()
+        if isinstance(skill_ref, dict):
+            role_ref = skill_ref.get(role_key)
+            if isinstance(role_ref, dict) and isinstance(role_ref.get("skills"), list):
+                for skill_item in role_ref.get("skills", []):
+                    if not isinstance(skill_item, dict):
+                        continue
+                    skill_name = normalize_text(skill_item.get("name"))
+                    if skill_name:
+                        collected.append(skill_name)
+
+        deduped: List[str] = []
+        seen: Set[str] = set()
+        for skill in collected:
+            key = skill.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(skill)
+        return deduped
+
+    def _best_skill_match(self, input_skill: str, question_text: str, allowed_skills: List[str]) -> str:
+        in_skill = normalize_text(input_skill)
+        if not allowed_skills:
+            return in_skill or "General Skill"
+        if in_skill and in_skill in allowed_skills:
+            return in_skill
+
+        combined_tokens = self._tokenize(f"{in_skill} {question_text}")
+        best_skill = allowed_skills[0]
+        best_score = -1.0
+
+        for skill in allowed_skills:
+            skill_tokens = self._tokenize(skill)
+            overlap = len(combined_tokens & skill_tokens)
+            coverage = overlap / max(1, len(skill_tokens))
+            soft = 0.2 if in_skill and (in_skill.lower() in skill.lower() or skill.lower() in in_skill.lower()) else 0.0
+            score = coverage + soft
+            if score > best_score:
+                best_score = score
+                best_skill = skill
+
+        return best_skill
+
+    def _infer_level_from_answer(self, skill: str, answer_text: str) -> Dict[str, Any]:
+        ref = self._find_skill_reference(skill)
+        descriptions = self._extract_level_descriptions(ref)
+        answer_tokens = self._tokenize(answer_text)
+
+        if not descriptions or not answer_tokens:
+            return {"idx": 0, "score": 0.0}
+
+        best_idx = 0
+        best_score = 0.0
+
+        for idx, level_name in enumerate(LEVEL_ORDER):
+            desc = descriptions.get(level_name, "")
+            desc_tokens = self._tokenize(desc)
+            if not desc_tokens:
+                continue
+            overlap = len(answer_tokens & desc_tokens)
+            score = overlap / max(1, len(desc_tokens))
+            if score > best_score:
+                best_score = score
+                best_idx = idx
+
+        return {"idx": best_idx, "score": round(best_score, 4)}
+
+    async def _infer_levels_from_answers_ai(self, items: List[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+        if not self.llm_provider or not hasattr(self.llm_provider, "generate_content"):
+            return {}
+        if not items:
+            return {}
+
+        eval_items: List[Dict[str, Any]] = []
+        for item in items:
+            key = int(item.get("key", -1))
+            skill = normalize_text(item.get("skill"))
+            question = normalize_text(item.get("question"))
+            answer = normalize_text(item.get("answer"))
+            if key < 0 or not skill or not answer:
+                continue
+
+            ref = self._find_skill_reference(skill)
+            desc = self._extract_level_descriptions(ref)
+            if not desc:
+                continue
+
+            level_desc = {
+                "1": desc.get("none", ""),
+                "2": desc.get("basic", ""),
+                "3": desc.get("intermediate", ""),
+                "4": desc.get("advanced", ""),
+            }
+            eval_items.append(
+                {
+                    "key": key,
+                    "skill": skill,
+                    "question": question,
+                    "answer": answer,
+                    "levelDescriptions": level_desc,
+                }
+            )
+
+        if not eval_items:
+            return {}
+
+        prompt = f"""
+You are scoring candidate answers against skill level descriptions.
+Return strict JSON only, no markdown.
+
+For each item:
+- Compare answer to level descriptions.
+- Pick exactly one level in "0","1","2","3","4".
+- Use "0" only for empty/off-topic/no evidence.
+- confidence is from 0.0 to 1.0.
+- desc is a short reason.
+
+Input:
+{json.dumps(eval_items, ensure_ascii=False)}
+
+Output schema:
+{{
+  "results": [
+    {{"key": 0, "level": "0", "confidence": 0.0, "desc": ""}}
+  ]
+}}
+"""
+        try:
+            response_text = await self.llm_provider.generate_content(
+                prompt=prompt,
+                model=GEMINI_GEMMA_3_27B_IT,
+            )
+            cleaned = self.llm_provider.clean_json_string(response_text)
+            parsed = json.loads(cleaned)
+        except Exception as ex:
+            self.logger.warning(f"AI scoring batch failed: {ex}")
+            return {}
+
+        results = parsed.get("results", []) if isinstance(parsed, dict) else []
+        if not isinstance(results, list):
+            return {}
+
+        output: Dict[int, Dict[str, Any]] = {}
+        for row in results:
+            if not isinstance(row, dict):
+                continue
+            try:
+                key = int(row.get("key"))
+            except Exception:
+                continue
+
+            level_raw = normalize_text(row.get("level"))
+            if level_raw not in {"0", "1", "2", "3", "4"}:
+                continue
+
+            try:
+                confidence = float(row.get("confidence", 0))
+            except Exception:
+                confidence = 0.0
+
+            confidence = max(0.0, min(1.0, confidence))
+            output[key] = {
+                "idx": max(0, min(3, int(level_raw) - 1)) if level_raw != "0" else 0,
+                "score": round(confidence, 4),
+                "desc": normalize_text(row.get("desc")),
+                "rawLevel": level_raw,
+            }
+
+        return output
+
+    async def evaluate_survey_responses(self, request: SurveyResponsesDto) -> SurveySummaryResultDto:
+        rules = self._load_score_rules()
+        improve_threshold = float(rules.get("improvement_threshold", 1))
+
+        answer_payload = request.answer
+        answer_responses = answer_payload.responses if answer_payload else []
+        target_input = request.target.model_dump() if request.target else {}
+
+        allowed_skills: List[str] = []
+        seen_allowed_skills: Set[str] = set()
+        for resp in answer_responses:
+            skill_name = normalize_text(resp.skill)
+            skill_key = skill_name.lower()
+            if skill_name and skill_key not in seen_allowed_skills:
+                allowed_skills.append(skill_name)
+                seen_allowed_skills.add(skill_key)
+
+        ai_items: List[Dict[str, Any]] = [
+            {
+                "key": idx,
+                "skill": item.skill,
+                "question": item.question,
+                "answer": item.answer,
+            }
+            for idx, item in enumerate(answer_responses)
+        ]
+        ai_inferred_levels = await self._infer_levels_from_answers_ai(ai_items)
+
+        by_phase: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for idx, item in enumerate(answer_responses):
+            phase = normalize_text(item.phase) or "general"
+            mapped_skill = self._best_skill_match(
+                input_skill=item.skill,
+                question_text=item.question,
+                allowed_skills=allowed_skills,
+            )
+
+            semantic = self._infer_level_from_answer(mapped_skill, item.answer)
+            semantic_idx = int(semantic["idx"])
+            semantic_conf = float(semantic["score"])
+            ai_semantic = ai_inferred_levels.get(idx)
+            ai_idx = int(ai_semantic["idx"]) if ai_semantic else 0
+            ai_conf = float(ai_semantic["score"]) if ai_semantic else 0.0
+
+            selected_level_input = normalize_text(item.selectedLevel)
+            selected_idx = self.map_level(selected_level_input) if selected_level_input else None
+
+            # If answer is off-topic or empty -> Missing.
+            if semantic_conf < 0.06 and (selected_idx is None or selected_idx == 0):
+                final_idx = ai_idx if ai_conf >= 0.35 else 0
+                status = "missing"
+            elif selected_idx is None:
+                # No FE level -> AI score is prioritized; fallback to lexical semantic.
+                if ai_conf >= 0.35:
+                    final_idx = ai_idx
+                else:
+                    final_idx = max(1, semantic_idx) if semantic_conf >= 0.06 else 0
+                status = "missing" if final_idx == 0 else "evaluated"
+            else:
+                # FE level exists -> keep that floor, allow semantic/AI to push higher.
+                final_idx = max(selected_idx, semantic_idx) if semantic_conf >= 0.06 else selected_idx
+                if ai_conf >= 0.6:
+                    final_idx = max(final_idx, ai_idx)
+                status = "missing" if final_idx == 0 else "evaluated"
+
+            final_level_number = str(final_idx + 1) if final_idx > 0 else "0"
+            map_score = float(final_idx)
+
+            by_phase[phase].append(
+                {
+                    "questionId": item.questionId,
+                    "question": item.question,
+                    "inputSkill": item.skill,
+                    "skill": mapped_skill,
+                    "answer": item.answer,
+                    "selectedLevelInput": selected_level_input,
+                    "selectedLevel": final_level_number,
+                    "semanticConfidence": round(semantic_conf, 4),
+                    "blendedScore": round(map_score, 2),
+                    "sfiaLevel": self._resolve_sfia_level(mapped_skill, final_level_number),
+                    "status": status,
+                }
+            )
+
+        summary: Dict[str, Any] = {}
+        lines: List[str] = []
+        scored_responses: List[Dict[str, Any]] = []
+
+        for phase, items in by_phase.items():
+            scores = [float(i["blendedScore"]) for i in items]
+            avg = round(sum(scores) / len(scores), 2) if scores else 0
+            to_improve = [i["skill"] for i in items if float(i["blendedScore"]) <= improve_threshold or i.get("status") == "missing"]
+            summary[phase] = {
+                "AverageScore": avg,
+                "AverageLevel": self._display_level(avg),
+                "Questions": [
+                    {
+                        "QuestionId": i["questionId"],
+                        "Skill": i["skill"],
+                        "InputSkill": i["inputSkill"],
+                        "SelectedLevel": i["selectedLevel"],
+                        "Score": i["blendedScore"],
+                        "SfiaLevel": i["sfiaLevel"],
+                        "SemanticConfidence": i["semanticConfidence"],
+                        "Status": i["status"],
+                    }
+                    for i in items
+                ],
+                "NeedsImprovement": to_improve,
+            }
+            scored_responses.extend(
+                [
+                    {
+                        "desc": i["skill"],
+                        "question": i["question"],
+                        "score": i["blendedScore"],
+                        "level": i["selectedLevel"],
+                        "answer": i["answer"],
+                    }
+                    for i in items
+                ]
+            )
+            lines.append(
+                f"{phase}: average level {self._display_level(avg)}. "
+                f"Consider improving: {', '.join(to_improve) if to_improve else 'none'}"
+            )
+
+        skill_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for phase_items in by_phase.values():
+            for item in phase_items:
+                skill_groups[item["skill"]].append(item)
+
+        skill_scores = []
+        for skill, items in skill_groups.items():
+            avg_blended = round(sum(float(i["blendedScore"]) for i in items) / len(items), 2)
+            avg_sfia = round(sum(int(i["sfiaLevel"]) for i in items) / len(items))
+            score_percent = max(0, min(100, round((avg_sfia / 5) * 100)))
+
+            skill_scores.append(
+                {
+                    "skillKey": skill,
+                    "status": (
+                        "missing"
+                        if avg_blended <= 0.5
+                        else "weak"
+                        if avg_blended <= 1.5
+                        else "medium"
+                        if avg_blended <= 2.5
+                        else "good"
+                    ),
+                    "score": score_percent,
+                    "sfiaLevel": avg_sfia,
+                    "selectedLevel": self._display_level(avg_blended),
+                }
+            )
+
+        skill_scores.sort(key=lambda x: x["score"], reverse=True)
+
+        current_skills: List[Dict[str, Any]] = [
+            {
+                "skill": s["skillKey"],
+                "level": s["selectedLevel"],
+                "sfiaLevel": s["sfiaLevel"],
+                "score": s["score"],
+            }
+            for s in skill_scores
+        ]
+        missing: List[str] = sorted(
+            {
+                item["skill"]
+                for phase_items in by_phase.values()
+                for item in phase_items
+                if item.get("status") == "missing" or float(item.get("blendedScore", 0)) <= 0
+            }
+        )
+
+        scored_answer = {
+            "responses": scored_responses,
+        }
+
+        return SurveySummaryResultDto(
+            userId=request.userId,
+            summaryText="\n".join(lines),
+            answer=scored_answer,
+            target=target_input,
+            current={"skills": current_skills},
+            missing=missing,
+        )
+
+    async def evaluate_answer_json(self, answer: SurveyAnswerJsonDto) -> SurveySummaryResultDto:
+        req = SurveyResponsesDto(answer=answer)
+        return await self.evaluate_survey_responses(req)
