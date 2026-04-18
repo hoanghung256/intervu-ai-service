@@ -287,7 +287,103 @@ class AssessmentService:
         scored.sort(key=lambda x: (x["priority_score"], x["min_level"]), reverse=True)
         return scored
 
-    def _build_options_from_skill_levels(self, skill_name: str, phase: str) -> List[Dict[str, str]]:
+    def _build_level_hints(self, skill_name: str, question: str) -> List[str]:
+        text = normalize_text(f"{skill_name} {question}").lower()
+        if any(k in text for k in ["performance", "latency", "throughput", "optimize", "slow"]):
+            return ["measure baseline latency", "optimize DB/query hotspots", "add caching and monitor p95/p99"]
+        if any(k in text for k in ["auth", "authorization", "authentication", "security", "token", "jwt"]):
+            return ["validate auth flow", "enforce RBAC and token checks", "harden threat model with audit and monitoring"]
+        if any(k in text for k in ["database", "sql", "schema", "index", "query"]):
+            return ["review schema/query plan", "add indexes and tune queries", "set migration + consistency + capacity strategy"]
+        if any(k in text for k in ["api", "endpoint", "rest", "integration"]):
+            return ["define request/response contract", "handle validation + errors + retries", "design versioning, observability, and SLA guards"]
+        if any(k in text for k in ["deploy", "container", "kubernetes", "ci/cd", "release"]):
+            return ["prepare reproducible build/deploy", "add health checks and rollback", "design progressive rollout with reliability gates"]
+        if any(k in text for k in ["test", "testing", "bug", "qa"]):
+            return ["write core happy-path tests", "cover edge cases + integration tests", "enforce quality gates and flake control"]
+        return ["implement a clear baseline solution", "add validation and reliability controls", "design for scale with observability and risk management"]
+
+    def _contextualize_option(
+        self,
+        level_idx: int,
+        base_text: str,
+        skill_name: str,
+        question: str,
+    ) -> str:
+        hints = self._build_level_hints(skill_name, question)
+        stem = normalize_text(question).rstrip("?")
+        short_stem = stem[:90] + "..." if len(stem) > 90 else stem
+
+        if level_idx == 0:
+            return f"Unclear for this scenario: {short_stem}."
+        if level_idx == 1:
+            return f"Start with {hints[0]} and basic verification."
+        if level_idx == 2:
+            return f"Do {hints[0]}, then {hints[1]}, and validate with metrics."
+        return f"Lead {hints[0]}, {hints[1]}, and {hints[2]} with safe rollout."
+
+    def _is_generic_option_text(self, text: str, question: str) -> bool:
+        content = normalize_text(text)
+        if not content:
+            return True
+        lowered = content.lower()
+        if "can demonstrate" in lowered and "capability" in lowered:
+            return True
+        if len(content.split()) < 8:
+            return True
+        option_tokens = self._tokenize(content)
+        question_tokens = self._tokenize(question)
+        if question_tokens and len(option_tokens & question_tokens) == 0:
+            return True
+        return False
+
+    def _coerce_option_level_index(self, raw_level: Any) -> Optional[int]:
+        level_text = normalize_text(str(raw_level))
+        if not level_text:
+            return None
+        if level_text in {"1", "2", "3", "4"}:
+            return int(level_text) - 1
+        mapped = self.map_level(level_text)
+        if mapped < 0 or mapped > 3:
+            return None
+        return mapped
+
+    def _normalize_question_options(
+        self,
+        raw_options: Any,
+        skill_name: str,
+        phase: str,
+        question: str,
+    ) -> List[Dict[str, str]]:
+        phase_levels = self.PHASE_A_LEVELS if phase == "phaseA" else self.PHASE_B_LEVELS
+        default_options = self._build_options_from_skill_levels(skill_name, phase, question)
+        by_idx: List[Optional[str]] = [None, None, None, None]
+
+        if isinstance(raw_options, list):
+            for idx, opt in enumerate(raw_options):
+                if not isinstance(opt, dict):
+                    continue
+                text = normalize_text(opt.get("text"))
+                if not text:
+                    continue
+                level_idx = self._coerce_option_level_index(opt.get("level"))
+                if level_idx is None and idx < 4:
+                    level_idx = idx
+                if level_idx is None or level_idx < 0 or level_idx > 3:
+                    continue
+                if by_idx[level_idx] is None:
+                    by_idx[level_idx] = text
+
+        options: List[Dict[str, str]] = []
+        for i in range(4):
+            candidate = by_idx[i] or default_options[i]["text"]
+            # If LLM returns generic filler, rewrite to scenario-aware hint.
+            if self._is_generic_option_text(candidate, question):
+                candidate = self._contextualize_option(i, default_options[i]["text"], skill_name, question)
+            options.append({"text": candidate, "level": phase_levels[i]})
+        return options
+
+    def _build_options_from_skill_levels(self, skill_name: str, phase: str, question: str = "") -> List[Dict[str, str]]:
         ref = self._find_skill_reference(skill_name)
         phase_levels = self.PHASE_A_LEVELS if phase == "phaseA" else self.PHASE_B_LEVELS
 
@@ -298,9 +394,20 @@ class AssessmentService:
         options: List[Dict[str, str]] = []
         for idx, phase_level in enumerate(phase_levels):
             base_level = LEVEL_ORDER[idx]
-            text = descriptions_by_level.get(base_level)
-            if not text:
-                text = f"Can demonstrate {base_level} capability in {skill_name}."
+            base_text = descriptions_by_level.get(base_level)
+            if not base_text:
+                base_text = {
+                    0: f"Limited hands-on experience with {skill_name}.",
+                    1: f"Can apply {skill_name} at a basic implementation level.",
+                    2: f"Can apply {skill_name} with solid structure and reliability.",
+                    3: f"Can lead advanced {skill_name} decisions in production.",
+                }[idx]
+            text = self._contextualize_option(
+                level_idx=idx,
+                base_text=base_text,
+                skill_name=skill_name,
+                question=question,
+            )
             options.append({"text": text, "level": phase_level})
 
         return options
@@ -360,7 +467,7 @@ class AssessmentService:
                 {
                     "skill": skill,
                     "question": question,
-                    "options": self._build_options_from_skill_levels(skill, phase),
+                    "options": self._normalize_question_options(raw.get("options"), skill, phase, question),
                 }
             )
             seen_questions.add(question)
@@ -386,7 +493,7 @@ class AssessmentService:
                 {
                     "skill": skill,
                     "question": question,
-                    "options": self._build_options_from_skill_levels(skill, phase),
+                    "options": self._build_options_from_skill_levels(skill, phase, question),
                 }
             )
             seen_questions.add(question)
@@ -525,13 +632,17 @@ Requirements:
 - phaseB length = {practical_count} (practical scenarios).
 - Use only the listed role skills.
 - Keep questions concrete and production-oriented.
+- For EACH question, return 4 options with levels "1","2","3","4".
+- Option text must be scenario-specific and directly related to the question context.
+- Options must be distinct in action depth, not just rewording level labels.
+- Do NOT output generic phrases like "Can demonstrate ... capability".
 - Do not return markdown or comments.
 
 Output schema:
 {{
   "contextQuestion": "",
-  "phaseA": [{{"skill": "", "question": ""}}],
-  "phaseB": [{{"skill": "", "question": ""}}]
+  "phaseA": [{{"skill": "", "question": "", "options": [{{"text":"", "level":"1"}}, {{"text":"", "level":"2"}}, {{"text":"", "level":"3"}}, {{"text":"", "level":"4"}}]}}],
+  "phaseB": [{{"skill": "", "question": "", "options": [{{"text":"", "level":"1"}}, {{"text":"", "level":"2"}}, {{"text":"", "level":"3"}}, {{"text":"", "level":"4"}}]}}]
 }}
 """
         timings_ms["build_prompt"] = round((perf_counter() - t0) * 1000, 3)
@@ -933,16 +1044,19 @@ Output schema:
 
         answer_payload = request.answer
         answer_responses = answer_payload.responses if answer_payload else []
-        resolved_target = target_input if isinstance(target_input, dict) else {}
-        if not resolved_target and request.target:
-            resolved_target = request.target.model_dump()
-        if not resolved_target and answer_payload and answer_payload.profile:
+        resolved_target: Dict[str, Any] = {}
+        # Target must come from answer.profile first.
+        if answer_payload and answer_payload.profile:
             profile = answer_payload.profile
             resolved_target = {
                 "roles": [normalize_text(profile.role)] if normalize_text(profile.role) else [],
                 "level": normalize_text(profile.level),
                 "skillsTarget": [normalize_text(s) for s in (profile.techstack or []) if normalize_text(s)],
             }
+        elif isinstance(target_input, dict):
+            resolved_target = target_input
+        elif request.target:
+            resolved_target = request.target.model_dump()
 
         allowed_skills: List[str] = []
         seen_allowed_skills: Set[str] = set()
@@ -1139,9 +1253,23 @@ Output schema:
         if not resolved_gap["missing"]:
             resolved_gap["missing"] = computed_missing
 
+        overall_scores = [float(item.get("blendedScore", 0)) for phase_items in by_phase.values() for item in phase_items]
+        overall_score = round((sum(overall_scores) / len(overall_scores)) * 25, 2) if overall_scores else 0.0
+        overall_level = self._display_level(round((sum(overall_scores) / len(overall_scores)), 2)) if overall_scores else "None"
+
         scored_answer = {
+            "profile": answer_payload.profile.model_dump() if answer_payload and answer_payload.profile else {},
             "responses": scored_responses,
+            "overallScore": overall_score,
+            "overallLevel": overall_level,
         }
+
+        missing_output = resolved_gap["missing"]
+        weak_output = resolved_gap["weak"]
+        if missing_output:
+            lines.append(f"Missing skills (from gap): {', '.join(missing_output)}")
+        if weak_output:
+            lines.append(f"Weak skills (from gap): {', '.join(weak_output)}")
 
         return SurveySummaryResultDto(
             userId=request.userId,
@@ -1149,9 +1277,16 @@ Output schema:
             answer=scored_answer,
             target=resolved_target,
             current={"skills": current_skills},
-            gap=resolved_gap,
+            gapJson={
+                "weak": weak_output,
+                "missing": missing_output,
+            },
         )
 
-    async def evaluate_answer_json(self, answer: SurveyAnswerJsonDto) -> SurveySummaryResultDto:
+    async def evaluate_answer_json(
+        self,
+        answer: SurveyAnswerJsonDto,
+        gap_input: Optional[Dict[str, Any]] = None,
+    ) -> SurveySummaryResultDto:
         req = SurveyResponsesDto(answer=answer)
-        return await self.evaluate_survey_responses(req)
+        return await self.evaluate_survey_responses(req, gap_input=gap_input)
