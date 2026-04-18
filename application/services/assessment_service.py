@@ -921,13 +921,28 @@ Output schema:
 
         return output
 
-    async def evaluate_survey_responses(self, request: SurveyResponsesDto) -> SurveySummaryResultDto:
+    async def evaluate_survey_responses(
+        self,
+        request: SurveyResponsesDto,
+        target_input: Optional[Dict[str, Any]] = None,
+        gap_input: Optional[Dict[str, Any]] = None,
+        missing_input: Optional[List[str]] = None,
+    ) -> SurveySummaryResultDto:
         rules = self._load_score_rules()
         improve_threshold = float(rules.get("improvement_threshold", 1))
 
         answer_payload = request.answer
         answer_responses = answer_payload.responses if answer_payload else []
-        target_input = request.target.model_dump() if request.target else {}
+        resolved_target = target_input if isinstance(target_input, dict) else {}
+        if not resolved_target and request.target:
+            resolved_target = request.target.model_dump()
+        if not resolved_target and answer_payload and answer_payload.profile:
+            profile = answer_payload.profile
+            resolved_target = {
+                "roles": [normalize_text(profile.role)] if normalize_text(profile.role) else [],
+                "level": normalize_text(profile.level),
+                "skillsTarget": [normalize_text(s) for s in (profile.techstack or []) if normalize_text(s)],
+            }
 
         allowed_skills: List[str] = []
         seen_allowed_skills: Set[str] = set()
@@ -1088,7 +1103,7 @@ Output schema:
             }
             for s in skill_scores
         ]
-        missing: List[str] = sorted(
+        computed_missing: List[str] = sorted(
             {
                 item["skill"]
                 for phase_items in by_phase.values()
@@ -1096,6 +1111,33 @@ Output schema:
                 if item.get("status") == "missing" or float(item.get("blendedScore", 0)) <= 0
             }
         )
+        computed_weak: List[str] = sorted(
+            {
+                item["skill"]
+                for phase_items in by_phase.values()
+                for item in phase_items
+                if item.get("status") != "missing"
+                and float(item.get("blendedScore", 0)) <= improve_threshold
+                and float(item.get("blendedScore", 0)) > 0
+            }
+        )
+
+        resolved_gap: Dict[str, Any] = {"weak": [], "missing": []}
+        if isinstance(gap_input, dict):
+            weak_in = gap_input.get("weak", [])
+            missing_in = gap_input.get("missing", [])
+            resolved_gap["weak"] = [normalize_text(x) for x in weak_in if normalize_text(x)] if isinstance(weak_in, list) else []
+            resolved_gap["missing"] = [normalize_text(x) for x in missing_in if normalize_text(x)] if isinstance(missing_in, list) else []
+        elif request.gap:
+            resolved_gap["weak"] = [normalize_text(x) for x in request.gap.weak if normalize_text(x)]
+            resolved_gap["missing"] = [normalize_text(x) for x in request.gap.missing if normalize_text(x)]
+        elif isinstance(missing_input, list):
+            resolved_gap["missing"] = [normalize_text(x) for x in missing_input if normalize_text(x)]
+
+        if not resolved_gap["weak"]:
+            resolved_gap["weak"] = computed_weak
+        if not resolved_gap["missing"]:
+            resolved_gap["missing"] = computed_missing
 
         scored_answer = {
             "responses": scored_responses,
@@ -1105,9 +1147,9 @@ Output schema:
             userId=request.userId,
             summaryText="\n".join(lines),
             answer=scored_answer,
-            target=target_input,
+            target=resolved_target,
             current={"skills": current_skills},
-            missing=missing,
+            gap=resolved_gap,
         )
 
     async def evaluate_answer_json(self, answer: SurveyAnswerJsonDto) -> SurveySummaryResultDto:
