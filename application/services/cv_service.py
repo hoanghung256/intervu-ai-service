@@ -71,13 +71,13 @@ Rules:
 CV text:
 \"\"\"{text}\"\"\"
 """
-        response_text = await self.llm_provider.generate_content(prompt, model=HUGGINGFACE_DEFAULT_MODEL)
+        response_text, usage = await self.llm_provider.generate_content(prompt, model=HUGGINGFACE_DEFAULT_MODEL)
         if self._is_upstream_unavailable(response_text):
             raise RuntimeError(response_text)
 
         cleaned_json = self.llm_provider.clean_json_string(response_text)
         try:
-            return json.loads(cleaned_json)
+            return json.loads(cleaned_json), usage
         except json.JSONDecodeError as e:
             raise ValueError(f"LLM returned invalid JSON. Raw output: '{response_text}'. Cleaned output: '{cleaned_json}'. Parse error: {e}")
 
@@ -94,7 +94,8 @@ CV text:
 
     # Keep backward compatibility if needed, though we will update the endpoint
     async def parse_cv_to_json(self, cv_text: str) -> dict:
-        return await self.parse_document_to_json(cv_text, "cv")
+        result, _ = await self.parse_document_to_json(cv_text, "cv")
+        return result
 
     async def evaluate_cv(self, full_text: str) -> dict:
         prompt = f"""

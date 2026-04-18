@@ -37,20 +37,21 @@ class SimilarityService:
         (Or `{{ "is_new": true }}` if no duplicates found)
         """
 
+        _zero_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         try:
             response = await self.llm_provider.chat_completion([{"role": "user", "content": prompt}])
             content = response["content"]
-            
+            usage = response.get("usage", _zero_usage)
+
             cleaned_json = self.llm_provider.clean_json_string(content)
-            
+
             # If no JSON braces found, clean_json_string returns the whole string.
             # We should try to handle this or log it.
             if not (cleaned_json.startswith('{') or cleaned_json.startswith('[')):
                 logging.error(f"LLM did not return JSON. Content: {content}")
-                # Fallback or re-attempt? For now, return a default.
-                return {"is_new": True}
+                return {"is_new": True}, usage
 
-            return json.loads(cleaned_json)
+            return json.loads(cleaned_json), usage
         except Exception as e:
             logging.error(f"Error in SimilarityService: {e}")
-            return {"is_new": True}
+            return {"is_new": True}, _zero_usage

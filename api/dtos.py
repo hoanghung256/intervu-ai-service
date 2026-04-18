@@ -1,11 +1,19 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Union
 
+
+class LLMUsage(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
 class AskRequest(BaseModel):
     prompt: str
 
 class AnswerResponse(BaseModel):
     answer: str
+    usage: Optional[LLMUsage] = None
 
 class AssessmentRequest(BaseModel):
     role: Optional[str] = ""
@@ -38,6 +46,7 @@ class AssessmentResponse(BaseModel):
     context_question: Optional[str] = None
     phaseA: Optional[List[dict]] = None
     phaseB: Optional[List[dict]] = None
+    usage: Optional[LLMUsage] = None
 
 class CVResponse(BaseModel):
     apply_for: Optional[dict] = None
@@ -47,6 +56,7 @@ class CVResponse(BaseModel):
     certifications: Optional[list] = None
     total_years_of_experience: Optional[float] = None
     error: Optional[str] = None
+    usage: Optional[LLMUsage] = None
 
 class JDResponse(BaseModel):
     job_title: Optional[str] = None
@@ -57,12 +67,14 @@ class JDResponse(BaseModel):
     benefits: Optional[list] = None
     company_culture: Optional[str] = None
     error: Optional[str] = None
+    usage: Optional[LLMUsage] = None
 
 class TranscriptResponse(BaseModel):
     status: str
     transcript: str
     question_list: List[dict]
     tags: Optional[List[str]] = Field(default_factory=list)
+    usage: Optional[LLMUsage] = None
 
 class ExtractQuestionsRequest(BaseModel):
     transcript_text: str
@@ -72,6 +84,7 @@ class ExtractQuestionsResponse(BaseModel):
     status: str
     question_list: List[dict]
     tags: Optional[List[str]] = Field(default_factory=list)
+    usage: Optional[LLMUsage] = None
     
 class CvEvaluationResponse(BaseModel):
     status: str

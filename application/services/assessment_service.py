@@ -279,7 +279,7 @@ Output schema:
   "phaseB": [{{"skill": "", "question": "", "options": [{{"text": "", "level": "Beginner"}}, {{"text": "", "level": "Comfortable"}}, {{"text": "", "level": "Confident"}}, {{"text": "", "level": "Expert"}}]}}]
 }}
 """
-        response_text = await self.llm_provider.generate_content(
+        response_text, usage = await self.llm_provider.generate_content(
             prompt=prompt,
             model=HUGGINGFACE_DEFAULT_MODEL
         )
@@ -299,7 +299,7 @@ Use double quotes, no markdown, no comments, no trailing commas.
 Content:
 {cleaned}
 """
-                repaired_text = await self.llm_provider.generate_content(
+                repaired_text, _ = await self.llm_provider.generate_content(
                     prompt=repair_prompt,
                     model=HUGGINGFACE_DEFAULT_MODEL
                 )
@@ -344,4 +344,4 @@ Content:
         if len(data.get("phaseB", [])) != 5:
             raise Exception("Invalid Phase B")
 
-        return data
+        return data, usage

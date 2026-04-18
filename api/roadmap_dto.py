@@ -2,6 +2,7 @@ import json
 from typing import Optional
 
 from pydantic import BaseModel, model_validator
+from api.dtos import LLMUsage
 
 
 class TargetSkillDto(BaseModel):
@@ -46,6 +47,7 @@ class RoadmapResponse(BaseModel):
     status: str
     roadmap: Optional[dict] = None
     error: Optional[str] = None
+    usage: Optional[LLMUsage] = None
 
 
 class EvaluationItemDto(BaseModel):

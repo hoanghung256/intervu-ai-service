@@ -63,8 +63,8 @@ current_roadmap:
 
         prompt = base_prompt + request_payload
 
-        response_text = await self.llm_provider.generate_content(
-            prompt, 
+        response_text, _ = await self.llm_provider.generate_content(
+            prompt,
             model=HUGGINGFACE_DEFAULT_MODEL
         )
 

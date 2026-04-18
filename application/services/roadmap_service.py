@@ -93,12 +93,12 @@ Gap: {request.gap}
 
         prompt = base_prompt + request_payload
 
-        # response_text = await self.llm_provider.generate_content(prompt, model=HUGGINGFACE_DEFAULT_MODEL)
-        response_text = await self.llm_provider.generate_content(prompt, model=GEMINI_DEFAULT_MODEL)
+        # response_text, usage = await self.llm_provider.generate_content(prompt, model=HUGGINGFACE_DEFAULT_MODEL)
+        response_text, usage = await self.llm_provider.generate_content(prompt, model=GEMINI_DEFAULT_MODEL)
 
         try:
             cleaned_json = self.llm_provider.clean_json_string(response_text)
-            return json.loads(cleaned_json)
+            return json.loads(cleaned_json), usage
         except Exception as ex:
             logging.error(f"Failed to parse roadmap JSON: {ex}")
             raise ValueError("Model did not return a valid roadmap JSON")

@@ -103,13 +103,14 @@ class InterviewService:
 
         response_data = await self.llm_provider.chat_completion(llm_messages)
         assistant_text = self.extract_single_question(response_data["content"])
+        usage = response_data.get("usage", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
 
         await self.history_repository.append_message(
             user_id,
             {"role": response_data["role"], "content": assistant_text},
             max_messages=self.max_history_messages,
         )
-        return assistant_text
+        return assistant_text, usage
 
     def _extract_last_assistant_question(self, messages: List[dict]) -> Optional[str]:
         for item in reversed(messages):
