@@ -161,14 +161,9 @@ class SurveySummaryResultDto(BaseModel):
     answer: Dict[str, Any] = Field(default_factory=dict)
     target: Dict[str, Any] = Field(default_factory=dict)
     current: Dict[str, Any] = Field(default_factory=dict)
-    gap: Dict[str, Any] = Field(default_factory=lambda: {"weak": [], "missing": []})
+    gapJson: Dict[str, List[str]] = Field(default_factory=lambda: {"weak": [], "missing": []})
 
 
 class EvaluateAssessmentRequestDto(BaseModel):
     answer: SurveyAnswerJsonDto
-    target: Optional[Dict[str, Any]] = None
-    targetJson: Optional[Dict[str, Any]] = None
-    targetjson: Optional[Dict[str, Any]] = None
-    gap: Optional[Dict[str, Any]] = None
     gapJson: Optional[Dict[str, Any]] = None
-    gapjson: Optional[Dict[str, Any]] = None

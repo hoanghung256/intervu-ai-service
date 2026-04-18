@@ -10,7 +10,7 @@ from api.dtos import (
     AssessmentRequest, AssessmentResponse, SimilarityCheckRequest, 
     CVResponse, JDResponse, TranscriptResponse, AskRequest, AnswerResponse,
     ExtractQuestionsRequest, ExtractQuestionsResponse,
-    CvEvaluationResponse, EvaluateAssessmentRequestDto, SurveySummaryResultDto, SurveyResponsesDto
+    CvEvaluationResponse, EvaluateAssessmentRequestDto, SurveySummaryResultDto
 )
 from api.roadmap_dto import RoadmapRequest, RoadmapResponse, RoadmapProgressUpdateRequest
 from infrastructure.model_provider.llm_provider import LLMProvider
@@ -197,11 +197,9 @@ async def evaluate_assessment(
     assessment_service: AssessmentService = Depends(get_assessment_service)
 ):
     try:
-        target_payload = request.target or request.targetJson or request.targetjson or {}
-        gap_payload = request.gap or request.gapJson or request.gapjson or {}
-        return await assessment_service.evaluate_survey_responses(
-            SurveyResponsesDto(answer=request.answer),
-            target_input=target_payload,
+        gap_payload = request.gapJson or {}
+        return await assessment_service.evaluate_answer_json(
+            answer=request.answer,
             gap_input=gap_payload,
         )
     except Exception as e:
