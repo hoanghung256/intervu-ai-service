@@ -2,307 +2,419 @@
   "backend_engineer": {
     "skills": [
       {
-        "name": "Programming",
+        "name": "REST API Development",
         "levels": {
-          "1": "Can write basic code with guidance and understand simple logic.",
-          "2": "Can implement features independently and debug common issues.",
-          "3": "Can design maintainable code and solve complex problems.",
-          "4": "Can define coding standards and lead technical implementation."
-        }
-      },
-      {
-        "name": "API Development",
-        "levels": {
-          "1": "Can build simple endpoints and handle requests and responses.",
-          "2": "Can design practical APIs and handle authentication and errors.",
-          "3": "Can design scalable APIs and optimize performance.",
-          "4": "Can define API architecture and standards across systems."
-        }
-      },
-      {
-        "name": "Data Management",
-        "levels": {
-          "1": "Can work with basic queries and simple data models.",
-          "2": "Can design schemas and write efficient queries.",
-          "3": "Can optimize data access and ensure data consistency.",
-          "4": "Can design large-scale data architecture and strategy."
-        }
-      },
-      {
-        "name": "System Design",
-        "levels": {
-          "1": "Understands basic system structure and components.",
-          "2": "Can design feature-level systems with reasonable trade-offs.",
-          "3": "Can design scalable and reliable systems.",
-          "4": "Can define architecture direction and system strategy."
-        }
-      },
-      {
-        "name": "Testing",
-        "levels": {
-          "1": "Can write simple tests for basic functionality.",
-          "2": "Can design test cases and handle edge cases.",
-          "3": "Can build reliable automated testing systems.",
-          "4": "Can define testing strategy and quality standards."
-        }
-      },
-      {
-        "name": "DevOps Basics",
-        "levels": {
-          "1": "Understands basic deployment and environment setup.",
-          "2": "Can use CI/CD and container tools in workflows.",
-          "3": "Can optimize deployment and troubleshoot issues.",
-          "4": "Can design deployment architecture and automation strategy."
-        }
-      },
-      {
-        "name": "Security",
-        "levels": {
-          "1": "Applies basic validation and security practices.",
-          "2": "Implements authentication and handles common risks.",
-          "3": "Designs secure systems and identifies vulnerabilities.",
-          "4": "Defines security architecture and standards."
-        }
-      }
-    ]
-  },
-
-  "frontend_engineer": {
-    "skills": [
-      {
-        "name": "Frontend Development",
-        "levels": {
-          "1": "Can build simple UI components and layouts.",
-          "2": "Can develop complete features and manage UI logic.",
-          "3": "Can design scalable frontend architecture.",
-          "4": "Can define frontend standards and system design."
-        }
-      },
-      {
-        "name": "UI Development",
-        "levels": {
-          "1": "Can implement basic UI elements.",
-          "2": "Can build reusable UI components.",
-          "3": "Can design consistent UI systems.",
-          "4": "Can define design system architecture."
-        }
-      },
-      {
-        "name": "API Integration",
-        "levels": {
-          "1": "Can fetch and display API data.",
-          "2": "Can handle async data and errors.",
-          "3": "Can design data flow and optimize loading.",
-          "4": "Can define integration patterns and strategy."
-        }
-      },
-      {
-        "name": "State Management",
-        "levels": {
-          "1": "Manages simple component state.",
-          "2": "Handles shared state across components.",
-          "3": "Designs scalable state management.",
-          "4": "Defines state architecture across systems."
-        }
-      },
-      {
-        "name": "Responsive Design",
-        "levels": {
-          "1": "Builds UI for basic screen sizes.",
-          "2": "Handles responsive layouts properly.",
-          "3": "Designs adaptive UI systems.",
-          "4": "Defines responsive design standards."
-        }
-      },
-      {
-        "name": "Testing",
-        "levels": {
-          "1": "Writes basic UI tests.",
-          "2": "Covers common user flows.",
-          "3": "Builds reliable test suites.",
-          "4": "Defines frontend testing strategy."
-        }
-      },
-      {
-        "name": "Web Accessibility",
-        "levels": {
-          "1": "Applies basic accessibility rules.",
-          "2": "Builds accessible UI components.",
-          "3": "Ensures compliance across features.",
-          "4": "Defines accessibility standards."
-        }
-      }
-    ]
-  },
-
-  "devops_engineer": {
-    "skills": [
-      {
-        "name": "Infrastructure",
-        "levels": {
-          "1": "Understands basic infrastructure concepts.",
-          "2": "Can manage simple environments.",
-          "3": "Designs scalable infrastructure.",
-          "4": "Defines infrastructure architecture."
-        }
-      },
-      {
-        "name": "CI/CD",
-        "levels": {
-          "1": "Understands basic pipelines.",
-          "2": "Builds and maintains pipelines.",
-          "3": "Optimizes deployment workflows.",
-          "4": "Defines CI/CD strategy."
-        }
-      },
-      {
-        "name": "Cloud",
-        "levels": {
-          "1": "Understands basic cloud services.",
-          "2": "Deploys applications to cloud.",
-          "3": "Designs scalable cloud systems.",
-          "4": "Defines cloud architecture strategy."
-        }
-      },
-      {
-        "name": "Monitoring",
-        "levels": {
-          "1": "Reads logs and metrics.",
-          "2": "Sets up basic monitoring.",
-          "3": "Designs observability systems.",
-          "4": "Defines monitoring strategy."
-        }
-      },
-      {
-        "name": "Security",
-        "levels": {
-          "1": "Understands basic security.",
-          "2": "Applies security best practices.",
-          "3": "Designs secure systems.",
-          "4": "Defines security strategy."
-        }
-      }
-    ]
-  },
-
-  "qa_engineer": {
-    "skills": [
-      {
-        "name": "Testing Fundamentals",
-        "levels": {
-          "1": "Writes basic test cases.",
-          "2": "Covers functional scenarios.",
-          "3": "Designs test strategies.",
-          "4": "Defines quality standards."
-        }
-      },
-      {
-        "name": "Automation Testing",
-        "levels": {
-          "1": "Writes simple automated tests.",
-          "2": "Builds automation scripts.",
-          "3": "Designs automation frameworks.",
-          "4": "Defines automation strategy."
-        }
-      },
-      {
-        "name": "API Testing",
-        "levels": {
-          "1": "Tests basic API endpoints.",
-          "2": "Validates API behavior.",
-          "3": "Designs API test strategy.",
-          "4": "Defines API quality standards."
-        }
-      },
-      {
-        "name": "Quality Analysis",
-        "levels": {
-          "1": "Finds bugs in simple flows.",
-          "2": "Analyzes defects and impact.",
-          "3": "Improves quality processes.",
-          "4": "Defines quality strategy."
-        }
-      }
-    ]
-  },
-
-  "solution_architect": {
-    "skills": [
-      {
-        "name": "System Design",
-        "levels": {
-          "1": "Understands system components.",
-          "2": "Designs feature-level systems.",
-          "3": "Designs scalable systems.",
-          "4": "Defines system architecture."
-        }
-      },
-      {
-        "name": "Architecture Fundamentals",
-        "levels": {
-          "1": "Understands basic patterns.",
-          "2": "Applies architecture patterns.",
-          "3": "Designs architecture solutions.",
-          "4": "Defines architecture standards."
-        }
-      },
-      {
-        "name": "Cloud",
-        "levels": {
-          "1": "Understands cloud basics.",
-          "2": "Uses cloud services.",
-          "3": "Designs cloud systems.",
-          "4": "Defines cloud strategy."
-        }
-      },
-      {
-        "name": "Scalability",
-        "levels": {
-          "1": "Understands scaling basics.",
-          "2": "Handles moderate load.",
-          "3": "Designs scalable systems.",
-          "4": "Defines scalability strategy."
-        }
-      }
-    ]
-  },
-
-  "database_designer": {
-    "skills": [
-      {
-        "name": "Data Modeling",
-        "levels": {
-          "1": "Designs simple schemas.",
-          "2": "Handles relationships and constraints.",
-          "3": "Designs optimized models.",
-          "4": "Defines data architecture."
+          "1": "Can explain basic concepts of REST API Development with guidance.",
+          "2": "Can implement REST API Development for common feature requirements independently.",
+          "3": "Can design reliable solutions in REST API Development with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for REST API Development."
         }
       },
       {
         "name": "Database Design",
         "levels": {
-          "1": "Creates basic tables.",
-          "2": "Designs schemas.",
-          "3": "Optimizes structures.",
-          "4": "Defines database architecture."
+          "1": "Can explain basic concepts of Database Design with guidance.",
+          "2": "Can implement Database Design for common feature requirements independently.",
+          "3": "Can design reliable solutions in Database Design with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Database Design."
         }
       },
       {
-        "name": "Performance",
+        "name": "ORM and Data Access",
         "levels": {
-          "1": "Identifies slow queries.",
-          "2": "Optimizes queries.",
-          "3": "Designs performance strategies.",
-          "4": "Defines performance architecture."
+          "1": "Can explain basic concepts of ORM and Data Access with guidance.",
+          "2": "Can implement ORM and Data Access for common feature requirements independently.",
+          "3": "Can design reliable solutions in ORM and Data Access with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for ORM and Data Access."
         }
       },
       {
-        "name": "Data Integrity",
+        "name": "Authentication and Authorization",
         "levels": {
-          "1": "Understands constraints.",
-          "2": "Applies data rules.",
-          "3": "Ensures consistency.",
-          "4": "Defines integrity strategy."
+          "1": "Can explain basic concepts of Authentication and Authorization with guidance.",
+          "2": "Can implement Authentication and Authorization for common feature requirements independently.",
+          "3": "Can design reliable solutions in Authentication and Authorization with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Authentication and Authorization."
+        }
+      },
+      {
+        "name": "Automated Backend Testing",
+        "levels": {
+          "1": "Can explain basic concepts of Automated Backend Testing with guidance.",
+          "2": "Can implement Automated Backend Testing for common feature requirements independently.",
+          "3": "Can design reliable solutions in Automated Backend Testing with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Automated Backend Testing."
+        }
+      },
+      {
+        "name": "Containerization and Deployment",
+        "levels": {
+          "1": "Can explain basic concepts of Containerization and Deployment with guidance.",
+          "2": "Can implement Containerization and Deployment for common feature requirements independently.",
+          "3": "Can design reliable solutions in Containerization and Deployment with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Containerization and Deployment."
+        }
+      },
+      {
+        "name": "Logging and Monitoring",
+        "levels": {
+          "1": "Can explain basic concepts of Logging and Monitoring with guidance.",
+          "2": "Can implement Logging and Monitoring for common feature requirements independently.",
+          "3": "Can design reliable solutions in Logging and Monitoring with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Logging and Monitoring."
+        }
+      },
+      {
+        "name": "Caching",
+        "levels": {
+          "1": "Can explain basic concepts of Caching with guidance.",
+          "2": "Can implement Caching for common feature requirements independently.",
+          "3": "Can design reliable solutions in Caching with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Caching."
+        }
+      },
+      {
+        "name": "Microservices Architecture",
+        "levels": {
+          "1": "Can explain basic concepts of Microservices Architecture with guidance.",
+          "2": "Can implement Microservices Architecture for common feature requirements independently.",
+          "3": "Can design reliable solutions in Microservices Architecture with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Microservices Architecture."
+        }
+      },
+      {
+        "name": "Performance Optimization",
+        "levels": {
+          "1": "Can explain basic concepts of Performance Optimization with guidance.",
+          "2": "Can implement Performance Optimization for common feature requirements independently.",
+          "3": "Can design reliable solutions in Performance Optimization with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Performance Optimization."
+        }
+      },
+      {
+        "name": "System Integration",
+        "levels": {
+          "1": "Can explain basic concepts of System Integration with guidance.",
+          "2": "Can implement System Integration for common feature requirements independently.",
+          "3": "Can design reliable solutions in System Integration with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for System Integration."
+        }
+      },
+      {
+        "name": "Message Queue Processing",
+        "levels": {
+          "1": "Can explain basic concepts of Message Queue Processing with guidance.",
+          "2": "Can implement Message Queue Processing for common feature requirements independently.",
+          "3": "Can design reliable solutions in Message Queue Processing with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Message Queue Processing."
+        }
+      },
+      {
+        "name": "Concurrency and Scalability",
+        "levels": {
+          "1": "Can explain basic concepts of Concurrency and Scalability with guidance.",
+          "2": "Can implement Concurrency and Scalability for common feature requirements independently.",
+          "3": "Can design reliable solutions in Concurrency and Scalability with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Concurrency and Scalability."
+        }
+      },
+      {
+        "name": "Secure Coding for Backend",
+        "levels": {
+          "1": "Can explain basic concepts of Secure Coding for Backend with guidance.",
+          "2": "Can implement Secure Coding for Backend for common feature requirements independently.",
+          "3": "Can design reliable solutions in Secure Coding for Backend with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Secure Coding for Backend."
+        }
+      },
+      {
+        "name": "CI/CD for Backend Services",
+        "levels": {
+          "1": "Can explain basic concepts of CI/CD for Backend Services with guidance.",
+          "2": "Can implement CI/CD for Backend Services for common feature requirements independently.",
+          "3": "Can design reliable solutions in CI/CD for Backend Services with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for CI/CD for Backend Services."
+        }
+      }
+    ]
+  },
+  "frontend_engineer": {
+    "skills": [
+      {
+        "name": "HTML and Semantic Markup",
+        "levels": {
+          "1": "Can explain basic concepts of HTML and Semantic Markup with guidance.",
+          "2": "Can implement HTML and Semantic Markup for common feature requirements independently.",
+          "3": "Can design reliable solutions in HTML and Semantic Markup with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for HTML and Semantic Markup."
+        }
+      },
+      {
+        "name": "CSS and Styling Architecture",
+        "levels": {
+          "1": "Can explain basic concepts of CSS and Styling Architecture with guidance.",
+          "2": "Can implement CSS and Styling Architecture for common feature requirements independently.",
+          "3": "Can design reliable solutions in CSS and Styling Architecture with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for CSS and Styling Architecture."
+        }
+      },
+      {
+        "name": "JavaScript and TypeScript Development",
+        "levels": {
+          "1": "Can explain basic concepts of JavaScript and TypeScript Development with guidance.",
+          "2": "Can implement JavaScript and TypeScript Development for common feature requirements independently.",
+          "3": "Can design reliable solutions in JavaScript and TypeScript Development with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for JavaScript and TypeScript Development."
+        }
+      },
+      {
+        "name": "Frontend Framework Development",
+        "levels": {
+          "1": "Can explain basic concepts of Frontend Framework Development with guidance.",
+          "2": "Can implement Frontend Framework Development for common feature requirements independently.",
+          "3": "Can design reliable solutions in Frontend Framework Development with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Frontend Framework Development."
+        }
+      },
+      {
+        "name": "Responsive UI Development",
+        "levels": {
+          "1": "Can explain basic concepts of Responsive UI Development with guidance.",
+          "2": "Can implement Responsive UI Development for common feature requirements independently.",
+          "3": "Can design reliable solutions in Responsive UI Development with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Responsive UI Development."
+        }
+      },
+      {
+        "name": "API Integration in Frontend",
+        "levels": {
+          "1": "Can explain basic concepts of API Integration in Frontend with guidance.",
+          "2": "Can implement API Integration in Frontend for common feature requirements independently.",
+          "3": "Can design reliable solutions in API Integration in Frontend with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for API Integration in Frontend."
+        }
+      },
+      {
+        "name": "Frontend Testing",
+        "levels": {
+          "1": "Can explain basic concepts of Frontend Testing with guidance.",
+          "2": "Can implement Frontend Testing for common feature requirements independently.",
+          "3": "Can design reliable solutions in Frontend Testing with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Frontend Testing."
+        }
+      },
+      {
+        "name": "Web Accessibility",
+        "levels": {
+          "1": "Can explain basic concepts of Web Accessibility with guidance.",
+          "2": "Can implement Web Accessibility for common feature requirements independently.",
+          "3": "Can design reliable solutions in Web Accessibility with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Web Accessibility."
+        }
+      },
+      {
+        "name": "State Management",
+        "levels": {
+          "1": "Can explain basic concepts of State Management with guidance.",
+          "2": "Can implement State Management for common feature requirements independently.",
+          "3": "Can design reliable solutions in State Management with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for State Management."
+        }
+      },
+      {
+        "name": "Frontend Performance Optimization",
+        "levels": {
+          "1": "Can explain basic concepts of Frontend Performance Optimization with guidance.",
+          "2": "Can implement Frontend Performance Optimization for common feature requirements independently.",
+          "3": "Can design reliable solutions in Frontend Performance Optimization with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Frontend Performance Optimization."
+        }
+      },
+      {
+        "name": "Build Tools and Bundling",
+        "levels": {
+          "1": "Can explain basic concepts of Build Tools and Bundling with guidance.",
+          "2": "Can implement Build Tools and Bundling for common feature requirements independently.",
+          "3": "Can design reliable solutions in Build Tools and Bundling with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Build Tools and Bundling."
+        }
+      },
+      {
+        "name": "UI Component Design",
+        "levels": {
+          "1": "Can explain basic concepts of UI Component Design with guidance.",
+          "2": "Can implement UI Component Design for common feature requirements independently.",
+          "3": "Can design reliable solutions in UI Component Design with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for UI Component Design."
+        }
+      },
+      {
+        "name": "Browser Debugging and Troubleshooting",
+        "levels": {
+          "1": "Can explain basic concepts of Browser Debugging and Troubleshooting with guidance.",
+          "2": "Can implement Browser Debugging and Troubleshooting for common feature requirements independently.",
+          "3": "Can design reliable solutions in Browser Debugging and Troubleshooting with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Browser Debugging and Troubleshooting."
+        }
+      }
+    ]
+  },
+  "devops_engineer": {
+    "skills": [
+      {
+        "name": "Containerization and Deployment",
+        "levels": {
+          "1": "Can explain basic concepts of Containerization and Deployment with guidance.",
+          "2": "Can implement Containerization and Deployment for common feature requirements independently.",
+          "3": "Can design reliable solutions in Containerization and Deployment with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Containerization and Deployment."
+        }
+      },
+      {
+        "name": "CI/CD for Backend Services",
+        "levels": {
+          "1": "Can explain basic concepts of CI/CD for Backend Services with guidance.",
+          "2": "Can implement CI/CD for Backend Services for common feature requirements independently.",
+          "3": "Can design reliable solutions in CI/CD for Backend Services with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for CI/CD for Backend Services."
+        }
+      },
+      {
+        "name": "Logging and Monitoring",
+        "levels": {
+          "1": "Can explain basic concepts of Logging and Monitoring with guidance.",
+          "2": "Can implement Logging and Monitoring for common feature requirements independently.",
+          "3": "Can design reliable solutions in Logging and Monitoring with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Logging and Monitoring."
+        }
+      },
+      {
+        "name": "Secure Coding for Backend",
+        "levels": {
+          "1": "Can explain basic concepts of Secure Coding for Backend with guidance.",
+          "2": "Can implement Secure Coding for Backend for common feature requirements independently.",
+          "3": "Can design reliable solutions in Secure Coding for Backend with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Secure Coding for Backend."
+        }
+      },
+      {
+        "name": "Performance Optimization",
+        "levels": {
+          "1": "Can explain basic concepts of Performance Optimization with guidance.",
+          "2": "Can implement Performance Optimization for common feature requirements independently.",
+          "3": "Can design reliable solutions in Performance Optimization with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Performance Optimization."
+        }
+      },
+      {
+        "name": "Concurrency and Scalability",
+        "levels": {
+          "1": "Can explain basic concepts of Concurrency and Scalability with guidance.",
+          "2": "Can implement Concurrency and Scalability for common feature requirements independently.",
+          "3": "Can design reliable solutions in Concurrency and Scalability with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Concurrency and Scalability."
+        }
+      }
+    ]
+  },
+  "qa_engineer": {
+    "skills": [
+      {
+        "name": "Frontend Testing",
+        "levels": {
+          "1": "Can explain basic concepts of Frontend Testing with guidance.",
+          "2": "Can implement Frontend Testing for common feature requirements independently.",
+          "3": "Can design reliable solutions in Frontend Testing with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Frontend Testing."
+        }
+      },
+      {
+        "name": "Automated Backend Testing",
+        "levels": {
+          "1": "Can explain basic concepts of Automated Backend Testing with guidance.",
+          "2": "Can implement Automated Backend Testing for common feature requirements independently.",
+          "3": "Can design reliable solutions in Automated Backend Testing with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Automated Backend Testing."
+        }
+      }
+    ]
+  },
+  "solution_architect": {
+    "skills": [
+      {
+        "name": "System Integration",
+        "levels": {
+          "1": "Can explain basic concepts of System Integration with guidance.",
+          "2": "Can implement System Integration for common feature requirements independently.",
+          "3": "Can design reliable solutions in System Integration with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for System Integration."
+        }
+      },
+      {
+        "name": "Microservices Architecture",
+        "levels": {
+          "1": "Can explain basic concepts of Microservices Architecture with guidance.",
+          "2": "Can implement Microservices Architecture for common feature requirements independently.",
+          "3": "Can design reliable solutions in Microservices Architecture with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Microservices Architecture."
+        }
+      },
+      {
+        "name": "Concurrency and Scalability",
+        "levels": {
+          "1": "Can explain basic concepts of Concurrency and Scalability with guidance.",
+          "2": "Can implement Concurrency and Scalability for common feature requirements independently.",
+          "3": "Can design reliable solutions in Concurrency and Scalability with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Concurrency and Scalability."
+        }
+      },
+      {
+        "name": "Secure Coding for Backend",
+        "levels": {
+          "1": "Can explain basic concepts of Secure Coding for Backend with guidance.",
+          "2": "Can implement Secure Coding for Backend for common feature requirements independently.",
+          "3": "Can design reliable solutions in Secure Coding for Backend with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Secure Coding for Backend."
+        }
+      }
+    ]
+  },
+  "database_designer": {
+    "skills": [
+      {
+        "name": "Database Design",
+        "levels": {
+          "1": "Can explain basic concepts of Database Design with guidance.",
+          "2": "Can implement Database Design for common feature requirements independently.",
+          "3": "Can design reliable solutions in Database Design with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Database Design."
+        }
+      },
+      {
+        "name": "ORM and Data Access",
+        "levels": {
+          "1": "Can explain basic concepts of ORM and Data Access with guidance.",
+          "2": "Can implement ORM and Data Access for common feature requirements independently.",
+          "3": "Can design reliable solutions in ORM and Data Access with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for ORM and Data Access."
+        }
+      },
+      {
+        "name": "Caching",
+        "levels": {
+          "1": "Can explain basic concepts of Caching with guidance.",
+          "2": "Can implement Caching for common feature requirements independently.",
+          "3": "Can design reliable solutions in Caching with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Caching."
+        }
+      },
+      {
+        "name": "Performance Optimization",
+        "levels": {
+          "1": "Can explain basic concepts of Performance Optimization with guidance.",
+          "2": "Can implement Performance Optimization for common feature requirements independently.",
+          "3": "Can design reliable solutions in Performance Optimization with trade-off reasoning.",
+          "4": "Can lead architecture-level decisions and standards for Performance Optimization."
         }
       }
     ]
