@@ -176,7 +176,8 @@ async def generate_assessment(
         if assessment_service.is_empty_request(request):
             return {
                 "status": "need_input",
-                "question": "What are you trying to achieve right now, and what do you feel you're missing?"
+                "question": "What are you trying to achieve right now, and what do you feel you're missing?",
+                "usage": LLMUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
             }
 
         assessment_data, usage = await assessment_service.generate_assessment(request)
@@ -304,8 +305,8 @@ async def update_roadmap_progress(
     roadmap_progress_service: RoadmapProgressService = Depends(get_roadmap_progress_service)
 ):
     try:
-        updated_roadmap = await roadmap_progress_service.update_roadmap_progress(request)
-        return {"status": "success", "roadmap": updated_roadmap}
+        updated_roadmap, usage = await roadmap_progress_service.update_roadmap_progress(request)
+        return {"status": "success", "roadmap": updated_roadmap, "usage": LLMUsage(**usage)}
     except ValueError as e:
         logging.error(f"Invalid roadmap progress output: {e}")
         return {"status": "failed", "error": str(e)}
@@ -320,10 +321,15 @@ async def check_question_similarity(
     similarity_service: SimilarityService = Depends(get_similarity_service)
 ):
     try:
-        llm_output, _usage = await similarity_service.check_similarity(request)
+        llm_output, usage = await similarity_service.check_similarity(request)
+        usage_model = LLMUsage(**usage)
         if llm_output.get("is_new", False):
-            return {"title": request.Question.Title, "content": request.Question.Content}
-        return {}
+            return {
+                "title": request.Question.Title,
+                "content": request.Question.Content,
+                "usage": usage_model,
+            }
+        return {"usage": usage_model}
     except Exception as e:
         logging.error(f"Error checking similarity: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -342,8 +348,8 @@ async def get_question(
     interview_service: InterviewService = Depends(get_interview_service)
 ):
     try:
-        question, _usage = await interview_service.get_next_question(id, user_answer)
-        return {"question": question}
+        question, usage = await interview_service.get_next_question(id, user_answer)
+        return {"question": question, "usage": LLMUsage(**usage)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -367,10 +373,11 @@ async def evaluate_cv_endpoint(
         content = await file.read()
         full_text = await cv_service.extract_text_from_pdf(content)
         
-        evaluation = await cv_service.evaluate_cv(full_text)
+        evaluation, usage = await cv_service.evaluate_cv(full_text)
         return {
             "status": "success",
-            **evaluation
+            **evaluation,
+            "usage": LLMUsage(**usage),
         }
     except Exception as e:
         logging.error(f"Error in evaluate_cv_endpoint: {e}")

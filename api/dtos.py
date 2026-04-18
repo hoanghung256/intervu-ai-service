@@ -93,3 +93,4 @@ class CvEvaluationResponse(BaseModel):
     gaps: List[str]
     reasoning: str
     final_verdict: str
+    usage: Optional[LLMUsage] = None

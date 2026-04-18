@@ -39,9 +39,8 @@ class SimilarityService:
 
         _zero_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         try:
-            response = await self.llm_provider.chat_completion([{"role": "user", "content": prompt}])
-            content = response["content"]
-            usage = response.get("usage", _zero_usage)
+            content, usage = await self.llm_provider.generate_content(prompt)
+            usage = usage or _zero_usage
 
             cleaned_json = self.llm_provider.clean_json_string(content)
 

@@ -63,14 +63,16 @@ current_roadmap:
 
         prompt = base_prompt + request_payload
 
-        response_text, _ = await self.llm_provider.generate_content(
+        _zero_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        response_text, usage = await self.llm_provider.generate_content(
             prompt,
             model=HUGGINGFACE_DEFAULT_MODEL
         )
+        usage = usage or _zero_usage
 
         try:
             cleaned_json = self.llm_provider.clean_json_string(response_text)
-            return json.loads(cleaned_json)
+            return json.loads(cleaned_json), usage
         except Exception as ex:
             logging.error(f"Failed to parse updated roadmap JSON: {ex}")
             raise ValueError("Model did not return a valid roadmap JSON")
