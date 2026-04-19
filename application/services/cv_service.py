@@ -71,13 +71,13 @@ Rules:
 CV text:
 \"\"\"{text}\"\"\"
 """
-        response_text = await self.llm_provider.generate_content(prompt, model=HUGGINGFACE_DEFAULT_MODEL)
+        response_text, usage = await self.llm_provider.generate_content(prompt, model=HUGGINGFACE_DEFAULT_MODEL)
         if self._is_upstream_unavailable(response_text):
             raise RuntimeError(response_text)
 
         cleaned_json = self.llm_provider.clean_json_string(response_text)
         try:
-            return json.loads(cleaned_json)
+            return json.loads(cleaned_json), usage
         except json.JSONDecodeError as e:
             raise ValueError(f"LLM returned invalid JSON. Raw output: '{response_text}'. Cleaned output: '{cleaned_json}'. Parse error: {e}")
 
@@ -94,7 +94,8 @@ CV text:
 
     # Keep backward compatibility if needed, though we will update the endpoint
     async def parse_cv_to_json(self, cv_text: str) -> dict:
-        return await self.parse_document_to_json(cv_text, "cv")
+        result, _ = await self.parse_document_to_json(cv_text, "cv")
+        return result
 
     async def evaluate_cv(self, full_text: str) -> dict:
         prompt = f"""
@@ -136,24 +137,24 @@ Output Structure:
   "final_verdict": ""
 }}
 """
-        response_text = await self.llm_provider.chat_completion(
-            messages=[{"role": "user", "content": prompt}]
+        _zero_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        content, usage = await self.llm_provider.generate_content(
+            prompt, model=HUGGINGFACE_DEFAULT_MODEL
         )
-        
-        content = response_text.get("content")
+
         if not content:
             logging.error("LLM returned an empty response for CV evaluation.")
             raise ValueError("The AI model failed to generate an evaluation. Please try again or with a different model.")
 
         logging.info(f"CV Evaluation LLM Response: {content}")
-        
+
         cleaned_json = self.llm_provider.clean_json_string(content)
         if not cleaned_json:
             logging.error(f"Failed to find JSON in LLM response: {content}")
             raise ValueError("The AI model returned text that did not contain a valid JSON evaluation.")
 
         try:
-            return json.loads(cleaned_json)
+            return json.loads(cleaned_json), usage or _zero_usage
         except json.JSONDecodeError as e:
             logging.error(f"Failed to parse CV evaluation JSON: {e}. Cleaned output: {cleaned_json}")
             raise ValueError(f"Failed to parse the AI model's evaluation. Error: {str(e)}")

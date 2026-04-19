@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Optional
+from typing import Optional, Tuple
 
 from .base_provider import BaseLLMProvider
 from .model_constants import GEMINI_DEFAULT_MODEL
@@ -28,9 +28,10 @@ class GeminiProvider(BaseLLMProvider):
             logging.error(f"Failed to initialize Gemini client: {e}")
             self._client = None
 
-    async def generate_content(self, prompt: str, model: Optional[str] = None) -> str:
+    async def generate_content(self, prompt: str, model: Optional[str] = None) -> Tuple[str, dict]:
+        _zero = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         if not self._client:
-            return "Gemini service is currently unavailable (API key missing or invalid)."
+            return "Gemini service is currently unavailable (API key missing or invalid).", _zero
 
         target_model = model or self.model_name
         try:
@@ -38,7 +39,17 @@ class GeminiProvider(BaseLLMProvider):
                 model=target_model,
                 contents=[prompt],
             )
-            return response.text
+            usage = _zero
+            if response.usage_metadata:
+                prompt_tokens = response.usage_metadata.prompt_token_count or 0
+                completion_tokens = response.usage_metadata.candidates_token_count or 0
+                total_tokens = response.usage_metadata.total_token_count or (prompt_tokens + completion_tokens)
+                usage = {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens,
+                }
+            return response.text, usage
         except Exception as e:
             logging.error(f"Gemini generation failed: {e}")
-            return "Gemini service is currently unavailable (request failed)."
+            return "Gemini service is currently unavailable (request failed).", _zero

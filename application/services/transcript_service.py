@@ -49,15 +49,15 @@ class TranscriptService:
 
         Output JSON only. If no technical questions are found, return [].
         """
+        _zero_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         try:
-            llm_response = await self.llm_provider.chat_completion(
-                messages=[{"role": "user", "content": prompt}]
-            )
-            cleaned_content = self.llm_provider.clean_json_string(llm_response["content"])
+            content, usage = await self.llm_provider.generate_content(prompt)
+            usage = usage or _zero_usage
+            cleaned_content = self.llm_provider.clean_json_string(content)
             if cleaned_content:
                 questions_list = json.loads(cleaned_content)
-                return questions_list
-            return []
+                return questions_list, usage
+            return [], usage
         except Exception as e:
             logging.error(f"Error extracting questions from transcript: {e}")
-            return []
+            return [], _zero_usage

@@ -7,10 +7,10 @@ from typing import Optional, List, Union
 from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, Body, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from api.dtos import (
-    AssessmentRequest, AssessmentResponse, SimilarityCheckRequest, 
+    AssessmentRequest, AssessmentResponse, SimilarityCheckRequest,
     CVResponse, JDResponse, TranscriptResponse, AskRequest, AnswerResponse,
     ExtractQuestionsRequest, ExtractQuestionsResponse,
-    CvEvaluationResponse, EvaluateAssessmentRequestDto, SurveySummaryResultDto
+    CvEvaluationResponse, EvaluateAssessmentRequestDto, SurveySummaryResultDto, LLMUsage
 )
 from api.roadmap_dto import RoadmapRequest, RoadmapResponse, RoadmapProgressUpdateRequest
 from infrastructure.model_provider.llm_provider import LLMProvider
@@ -86,8 +86,8 @@ def get_inference_usecase(llm_provider: LLMProvider = Depends(get_llm_provider))
 @router.post("/inference", response_model=AnswerResponse)
 async def ask(payload: AskRequest, inference_usecase: InferenceUseCase = Depends(get_inference_usecase)) -> AnswerResponse:
     query = QueryEntity(prompt=payload.prompt)
-    result = await inference_usecase.generate_response(query)
-    return AnswerResponse(answer=result)
+    content, usage = await inference_usecase.generate_response(query)
+    return AnswerResponse(answer=content, usage=LLMUsage(**usage))
 
 
 @router.post("/extract-document", response_model=Union[CVResponse, JDResponse])
@@ -131,9 +131,10 @@ async def extract_document(
             )
 
     try:
-        parsed_json = await cv_service.parse_document_to_json(text, doc_type)
+        parsed_json, usage = await cv_service.parse_document_to_json(text, doc_type)
         if doc_type.lower() == "cv":
             await history_repo.set_last_cv(id, parsed_json)
+        parsed_json["usage"] = usage
         return parsed_json
     except RuntimeError as e:
         logging.error(f"Upstream LLM service unavailable while parsing {doc_type}: {e}")
@@ -175,16 +176,18 @@ async def generate_assessment(
         if assessment_service.is_empty_request(request):
             return {
                 "status": "need_input",
-                "question": "What are you trying to achieve right now, and what do you feel you're missing?"
+                "question": "What are you trying to achieve right now, and what do you feel you're missing?",
+                "usage": LLMUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
             }
 
-        assessment_data = await assessment_service.generate_assessment(request)
+        assessment_data, usage = await assessment_service.generate_assessment(request)
         logging.info(f"Generated assessment: {assessment_data}")
         return {
             "status": "success",
             "context_question": assessment_data.get("contextQuestion", ""),
             "phaseA": assessment_data.get("phaseA", []),
-            "phaseB": assessment_data.get("phaseB", [])
+            "phaseB": assessment_data.get("phaseB", []),
+            "usage": LLMUsage(**usage),
         }
     except Exception as e:
         logging.error(f"Error in generate_assessment: {e}")
@@ -250,7 +253,7 @@ async def extract_transcript(
                 # If not JSON, maybe it's a comma separated string
                 parsed_tags = [t.strip() for t in tags.split(",") if t.strip()]
 
-        questions_list = await transcript_service.extract_questions_from_text(transcript_text, parsed_tags)
+        questions_list, usage = await transcript_service.extract_questions_from_text(transcript_text, parsed_tags)
 
         # Extract all tags used in the question list to return them at the top level
         used_tags = set()
@@ -262,7 +265,8 @@ async def extract_transcript(
             "status": "success",
             "transcript": transcript_text,
             "question_list": questions_list,
-            "tags": list(used_tags)
+            "tags": list(used_tags),
+            "usage": LLMUsage(**usage),
         }
     except Exception as e:
         logging.error(f"Failed to extract transcript: {e}")
@@ -274,21 +278,22 @@ async def extract_questions_endpoint(
     transcript_service: TranscriptService = Depends(get_transcript_service)
 ):
     try:
-        questions = await transcript_service.extract_questions_from_text(
-            request.transcript_text, 
+        questions, usage = await transcript_service.extract_questions_from_text(
+            request.transcript_text,
             request.tags
         )
-        
+
         # Extract used tags
         used_tags = set()
         for q in questions:
             if "tags" in q and isinstance(q["tags"], list):
                 used_tags.update(q["tags"])
-                
+
         return {
             "status": "success",
             "question_list": questions,
-            "tags": list(used_tags)
+            "tags": list(used_tags),
+            "usage": LLMUsage(**usage),
         }
     except Exception as e:
         logging.error(f"Failed to extract questions: {e}")
@@ -301,8 +306,8 @@ async def generate_roadmap(
     roadmap_service: RoadmapService = Depends(get_roadmap_service)
 ):
     try:
-        roadmap_data = await roadmap_service.generate_roadmap(request)
-        return {"status": "success", "roadmap": roadmap_data}
+        roadmap_data, usage = await roadmap_service.generate_roadmap(request)
+        return {"status": "success", "roadmap": roadmap_data, "usage": LLMUsage(**usage)}
     except ValueError as e:
         logging.error(f"Invalid roadmap output: {e}")
         return {"status": "failed", "error": str(e)}
@@ -316,8 +321,8 @@ async def update_roadmap_progress(
     roadmap_progress_service: RoadmapProgressService = Depends(get_roadmap_progress_service)
 ):
     try:
-        updated_roadmap = await roadmap_progress_service.update_roadmap_progress(request)
-        return {"status": "success", "roadmap": updated_roadmap}
+        updated_roadmap, usage = await roadmap_progress_service.update_roadmap_progress(request)
+        return {"status": "success", "roadmap": updated_roadmap, "usage": LLMUsage(**usage)}
     except ValueError as e:
         logging.error(f"Invalid roadmap progress output: {e}")
         return {"status": "failed", "error": str(e)}
@@ -332,10 +337,15 @@ async def check_question_similarity(
     similarity_service: SimilarityService = Depends(get_similarity_service)
 ):
     try:
-        llm_output = await similarity_service.check_similarity(request)
+        llm_output, usage = await similarity_service.check_similarity(request)
+        usage_model = LLMUsage(**usage)
         if llm_output.get("is_new", False):
-            return {"title": request.Question.Title, "content": request.Question.Content}
-        return {}
+            return {
+                "title": request.Question.Title,
+                "content": request.Question.Content,
+                "usage": usage_model,
+            }
+        return {"usage": usage_model}
     except Exception as e:
         logging.error(f"Error checking similarity: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -354,8 +364,8 @@ async def get_question(
     interview_service: InterviewService = Depends(get_interview_service)
 ):
     try:
-        question = await interview_service.get_next_question(id, user_answer)
-        return {"question": question}
+        question, usage = await interview_service.get_next_question(id, user_answer)
+        return {"question": question, "usage": LLMUsage(**usage)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -379,10 +389,11 @@ async def evaluate_cv_endpoint(
         content = await file.read()
         full_text = await cv_service.extract_text_from_pdf(content)
         
-        evaluation = await cv_service.evaluate_cv(full_text)
+        evaluation, usage = await cv_service.evaluate_cv(full_text)
         return {
             "status": "success",
-            **evaluation
+            **evaluation,
+            "usage": LLMUsage(**usage),
         }
     except Exception as e:
         logging.error(f"Error in evaluate_cv_endpoint: {e}")

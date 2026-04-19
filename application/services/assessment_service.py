@@ -646,10 +646,11 @@ Output schema:
 }}
 """
         timings_ms["build_prompt"] = round((perf_counter() - t0) * 1000, 3)
+        usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         if self.llm_provider and hasattr(self.llm_provider, "generate_content"):
             t0 = perf_counter()
-            response_text = await self.llm_provider.generate_content(
+            response_text, usage = await self.llm_provider.generate_content(
                 prompt=prompt,
                 model=GEMINI_GEMMA_3_27B_IT,
             )
@@ -672,7 +673,7 @@ Content:
 {cleaned}
 """
                     repair_start = perf_counter()
-                    repaired_text = await self.llm_provider.generate_content(
+                    repaired_text, _ = await self.llm_provider.generate_content(
                         prompt=repair_prompt,
                         model=GEMINI_GEMMA_3_27B_IT,
                     )
@@ -759,7 +760,7 @@ Content:
                 timings_ms.get(slowest_stage, 0.0),
             )
 
-        return result
+        return result, usage
 
     def _level_alias_map(self) -> Dict[str, int]:
         rules = self._load_score_rules()
@@ -1040,7 +1041,7 @@ Output schema:
 }}
 """
         try:
-            response_text = await self.llm_provider.generate_content(
+            response_text, _ = await self.llm_provider.generate_content(
                 prompt=prompt,
                 model=GEMINI_GEMMA_3_27B_IT,
             )

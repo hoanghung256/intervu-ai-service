@@ -7,4 +7,5 @@ class InferenceUseCase:
 
     async def generate_response(self, query: Query):
         # Using the new LLMProvider's generate_content method
-        return await self.llm_model.generate_content(query.prompt)
+        content, usage = await self.llm_model.generate_content(query.prompt)
+        return content, usage

@@ -1,7 +1,7 @@
 import json
 import re
 import logging
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 
 from .base_provider import BaseLLMProvider
 from .gemini_provider import GeminiProvider
@@ -46,22 +46,24 @@ class LLMProvider:
 
         raise ValueError(f"Cannot resolve LLM provider for model '{model}'.")
 
-    async def generate_content(self, prompt: str, model: Optional[str] = None) -> str:
+    async def generate_content(self, prompt: str, model: Optional[str] = None) -> Tuple[str, dict]:
+        _zero = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         effective_model = model or self.model_name
         try:
             provider = self._get_provider(effective_model)
         except ValueError as e:
             logging.error(str(e))
-            return f"LLM service is misconfigured ({e})."
+            return f"LLM service is misconfigured ({e}).", _zero
 
         return await provider.generate_content(prompt=prompt, model=effective_model)
 
     async def chat_completion(self, messages: List[Dict], model: Optional[str] = None) -> Dict:
         prompt = self._messages_to_prompt(messages)
-        content = await self.generate_content(prompt=prompt, model=model)
+        content, usage = await self.generate_content(prompt=prompt, model=model)
         return {
             "content": content,
-            "role": "assistant"
+            "role": "assistant",
+            "usage": usage,
         }
 
     @staticmethod
