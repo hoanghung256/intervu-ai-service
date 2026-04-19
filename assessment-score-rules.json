@@ -1,0 +1,36 @@
+{
+  "question_plan": {
+    "core_count": 10,
+    "practical_count": 5
+  },
+  "level_aliases": {
+    "none": 0,
+    "basic": 1,
+    "intermediate": 2,
+    "advanced": 3,
+    "beginner": 0,
+    "comfortable": 1,
+    "confident": 2,
+    "expert": 3,
+    "1": 0,
+    "2": 1,
+    "3": 2,
+    "4": 3
+  },
+  "score_thresholds": {
+    "none_max": 0.5,
+    "basic_max": 1.5,
+    "intermediate_max": 2.5
+  },
+  "weights": {
+    "selected_level": 0.75,
+    "answer_semantic": 0.25
+  },
+  "sfia_fallback": {
+    "0": 0,
+    "1": 2,
+    "2": 3,
+    "3": 5
+  },
+  "improvement_threshold": 1
+}

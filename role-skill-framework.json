@@ -1,0 +1,197 @@
+{
+  "role_aliases": {
+    "backend": "backend_engineer",
+    "backend developer": "backend_engineer",
+    "backend engineer": "backend_engineer",
+    "be": "backend_engineer",
+    "frontend": "frontend_engineer",
+    "frontend developer": "frontend_engineer",
+    "frontend engineer": "frontend_engineer",
+    "front end developer": "frontend_engineer",
+    "fe": "frontend_engineer",
+    "devops": "devops_engineer",
+    "devops engineer": "devops_engineer",
+    "qa": "qa_engineer",
+    "qa engineer": "qa_engineer",
+    "test engineer": "qa_engineer",
+    "solution architect": "solution_architect",
+    "architect": "solution_architect",
+    "database designer": "database_designer",
+    "dba": "database_designer"
+  },
+  "role_definitions": {
+    "backend_engineer": {
+      "fresher": [
+        { "skill": "REST API Development", "min_level": 1 },
+        { "skill": "Database Design", "min_level": 1 },
+        { "skill": "ORM and Data Access", "min_level": 1 },
+        { "skill": "Authentication and Authorization", "min_level": 1 },
+        { "skill": "Automated Backend Testing", "min_level": 1 },
+        { "skill": "Containerization and Deployment", "min_level": 1 },
+        { "skill": "Logging and Monitoring", "min_level": 1 },
+        { "skill": "Caching", "min_level": 1 }
+      ],
+      "junior": [
+        { "skill": "REST API Development", "min_level": 2 },
+        { "skill": "Database Design", "min_level": 2 },
+        { "skill": "ORM and Data Access", "min_level": 2 },
+        { "skill": "Authentication and Authorization", "min_level": 2 },
+        { "skill": "Microservices Architecture", "min_level": 2 },
+        { "skill": "Automated Backend Testing", "min_level": 2 },
+        { "skill": "Containerization and Deployment", "min_level": 2 },
+        { "skill": "Performance Optimization", "min_level": 2 },
+        { "skill": "Logging and Monitoring", "min_level": 2 },
+        { "skill": "Caching", "min_level": 2 }
+      ],
+      "middle": [
+        { "skill": "REST API Development", "min_level": 3 },
+        { "skill": "Database Design", "min_level": 3 },
+        { "skill": "Authentication and Authorization", "min_level": 3 },
+        { "skill": "System Integration", "min_level": 3 },
+        { "skill": "Message Queue Processing", "min_level": 3 },
+        { "skill": "Concurrency and Scalability", "min_level": 3 },
+        { "skill": "Performance Optimization", "min_level": 3 },
+        { "skill": "Secure Coding for Backend", "min_level": 3 }
+      ],
+      "senior": [
+        { "skill": "Microservices Architecture", "min_level": 4 },
+        { "skill": "System Integration", "min_level": 4 },
+        { "skill": "Concurrency and Scalability", "min_level": 4 },
+        { "skill": "CI/CD for Backend Services", "min_level": 4 },
+        { "skill": "Secure Coding for Backend", "min_level": 4 },
+        { "skill": "Performance Optimization", "min_level": 4 },
+        { "skill": "Logging and Monitoring", "min_level": 4 },
+        { "skill": "Message Queue Processing", "min_level": 4 }
+      ]
+    },
+    "frontend_engineer": {
+      "fresher": [
+        { "skill": "HTML and Semantic Markup", "min_level": 1 },
+        { "skill": "CSS and Styling Architecture", "min_level": 1 },
+        { "skill": "JavaScript and TypeScript Development", "min_level": 1 },
+        { "skill": "Frontend Framework Development", "min_level": 1 },
+        { "skill": "Responsive UI Development", "min_level": 1 },
+        { "skill": "API Integration in Frontend", "min_level": 1 },
+        { "skill": "Frontend Testing", "min_level": 1 },
+        { "skill": "Web Accessibility", "min_level": 1 }
+      ],
+      "junior": [
+        { "skill": "JavaScript and TypeScript Development", "min_level": 2 },
+        { "skill": "Frontend Framework Development", "min_level": 2 },
+        { "skill": "State Management", "min_level": 2 },
+        { "skill": "Responsive UI Development", "min_level": 2 },
+        { "skill": "API Integration in Frontend", "min_level": 2 },
+        { "skill": "Frontend Testing", "min_level": 2 },
+        { "skill": "Frontend Performance Optimization", "min_level": 2 },
+        { "skill": "Build Tools and Bundling", "min_level": 2 }
+      ],
+      "middle": [
+        { "skill": "Frontend Framework Development", "min_level": 3 },
+        { "skill": "State Management", "min_level": 3 },
+        { "skill": "UI Component Design", "min_level": 3 },
+        { "skill": "Frontend Performance Optimization", "min_level": 3 },
+        { "skill": "Web Accessibility", "min_level": 3 },
+        { "skill": "Frontend Testing", "min_level": 3 },
+        { "skill": "Build Tools and Bundling", "min_level": 3 },
+        { "skill": "Browser Debugging and Troubleshooting", "min_level": 3 }
+      ],
+      "senior": [
+        { "skill": "UI Component Design", "min_level": 4 },
+        { "skill": "Frontend Performance Optimization", "min_level": 4 },
+        { "skill": "State Management", "min_level": 4 },
+        { "skill": "Frontend Testing", "min_level": 4 },
+        { "skill": "Web Accessibility", "min_level": 4 },
+        { "skill": "Build Tools and Bundling", "min_level": 4 },
+        { "skill": "Browser Debugging and Troubleshooting", "min_level": 4 },
+        { "skill": "API Integration in Frontend", "min_level": 4 }
+      ]
+    },
+    "devops_engineer": {
+      "fresher": [
+        { "skill": "Containerization and Deployment", "min_level": 1 },
+        { "skill": "CI/CD for Backend Services", "min_level": 1 },
+        { "skill": "Logging and Monitoring", "min_level": 1 },
+        { "skill": "Secure Coding for Backend", "min_level": 1 }
+      ],
+      "junior": [
+        { "skill": "Containerization and Deployment", "min_level": 2 },
+        { "skill": "CI/CD for Backend Services", "min_level": 2 },
+        { "skill": "Logging and Monitoring", "min_level": 2 },
+        { "skill": "Performance Optimization", "min_level": 2 }
+      ],
+      "middle": [
+        { "skill": "CI/CD for Backend Services", "min_level": 3 },
+        { "skill": "Containerization and Deployment", "min_level": 3 },
+        { "skill": "Logging and Monitoring", "min_level": 3 },
+        { "skill": "Concurrency and Scalability", "min_level": 3 }
+      ],
+      "senior": [
+        { "skill": "CI/CD for Backend Services", "min_level": 4 },
+        { "skill": "Containerization and Deployment", "min_level": 4 },
+        { "skill": "Logging and Monitoring", "min_level": 4 },
+        { "skill": "Concurrency and Scalability", "min_level": 4 }
+      ]
+    },
+    "qa_engineer": {
+      "fresher": [
+        { "skill": "Frontend Testing", "min_level": 1 },
+        { "skill": "Automated Backend Testing", "min_level": 1 }
+      ],
+      "junior": [
+        { "skill": "Frontend Testing", "min_level": 2 },
+        { "skill": "Automated Backend Testing", "min_level": 2 }
+      ],
+      "middle": [
+        { "skill": "Frontend Testing", "min_level": 3 },
+        { "skill": "Automated Backend Testing", "min_level": 3 }
+      ],
+      "senior": [
+        { "skill": "Frontend Testing", "min_level": 4 },
+        { "skill": "Automated Backend Testing", "min_level": 4 }
+      ]
+    },
+    "solution_architect": {
+      "fresher": [
+        { "skill": "System Integration", "min_level": 1 },
+        { "skill": "Microservices Architecture", "min_level": 1 }
+      ],
+      "junior": [
+        { "skill": "System Integration", "min_level": 2 },
+        { "skill": "Microservices Architecture", "min_level": 2 }
+      ],
+      "middle": [
+        { "skill": "System Integration", "min_level": 3 },
+        { "skill": "Microservices Architecture", "min_level": 3 },
+        { "skill": "Concurrency and Scalability", "min_level": 3 }
+      ],
+      "senior": [
+        { "skill": "System Integration", "min_level": 4 },
+        { "skill": "Microservices Architecture", "min_level": 4 },
+        { "skill": "Concurrency and Scalability", "min_level": 4 },
+        { "skill": "Secure Coding for Backend", "min_level": 4 }
+      ]
+    },
+    "database_designer": {
+      "fresher": [
+        { "skill": "Database Design", "min_level": 1 },
+        { "skill": "ORM and Data Access", "min_level": 1 }
+      ],
+      "junior": [
+        { "skill": "Database Design", "min_level": 2 },
+        { "skill": "ORM and Data Access", "min_level": 2 },
+        { "skill": "Caching", "min_level": 2 }
+      ],
+      "middle": [
+        { "skill": "Database Design", "min_level": 3 },
+        { "skill": "ORM and Data Access", "min_level": 3 },
+        { "skill": "Performance Optimization", "min_level": 3 }
+      ],
+      "senior": [
+        { "skill": "Database Design", "min_level": 4 },
+        { "skill": "ORM and Data Access", "min_level": 4 },
+        { "skill": "Performance Optimization", "min_level": 4 },
+        { "skill": "Caching", "min_level": 4 }
+      ]
+    }
+  }
+}

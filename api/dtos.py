@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Union
+from typing import Any, Optional, List, Dict, Union
 
 
 class LLMUsage(BaseModel):
@@ -94,3 +94,91 @@ class CvEvaluationResponse(BaseModel):
     reasoning: str
     final_verdict: str
     usage: Optional[LLMUsage] = None
+
+
+class SurveyAnswerProfileDto(BaseModel):
+    role: str = ""
+    level: str = ""
+    techstack: List[str] = Field(default_factory=list)
+    domain: List[str] = Field(default_factory=list)
+    freeText: str = ""
+
+
+class SurveyAnswerResponseDto(BaseModel):
+    questionId: str = ""
+    question: str = ""
+    phase: str = ""
+    skill: str = ""
+    answer: str = ""
+    selectedLevel: str = ""
+    usage: Optional[LLMUsage] = None
+
+
+class SurveyAnswerJsonDto(BaseModel):
+    profile: SurveyAnswerProfileDto = Field(default_factory=SurveyAnswerProfileDto)
+    responses: List[SurveyAnswerResponseDto] = Field(default_factory=list)
+
+
+class ResponseItemDto(BaseModel):
+    phase: str = ""
+    skill: str = ""
+    selectedLevel: str = ""
+
+
+class SurveyTargetDto(BaseModel):
+    roles: List[str] = Field(default_factory=list)
+    level: str = ""
+    skillsTarget: List[str] = Field(default_factory=list)
+
+
+class SurveySkillLevelDto(BaseModel):
+    skill: str = ""
+    level: str = ""
+    sfiaLevel: Optional[int] = None
+
+
+class SurveyCurrentDto(BaseModel):
+    skills: List[SurveySkillLevelDto] = Field(default_factory=list)
+
+
+class SurveyGapDto(BaseModel):
+    missing: List[str] = Field(default_factory=list)
+    weak: List[str] = Field(default_factory=list)
+
+
+class SurveyRoadmapDto(BaseModel):
+    phases: List[Dict[str, Any]] = Field(default_factory=list)
+    roadmap_metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SurveyResponsesDto(BaseModel):
+    userId: Optional[str] = None
+    assessmentName: str = ""
+    responses: List[ResponseItemDto] = Field(default_factory=list)
+    target: Optional[SurveyTargetDto] = None
+    current: Optional[SurveyCurrentDto] = None
+    gap: Optional[SurveyGapDto] = None
+    roadmap: Optional[SurveyRoadmapDto] = None
+    answer: Optional[SurveyAnswerJsonDto] = None
+
+    class Config:
+        @staticmethod
+        def alias_generator(string: str) -> str:
+            parts = string.split("_")
+            return parts[0] + "".join(p.title() for p in parts[1:])
+
+        validate_by_name = True
+
+
+class SurveySummaryResultDto(BaseModel):
+    userId: Optional[str] = None
+    summaryText: str = ""
+    answer: Dict[str, Any] = Field(default_factory=dict)
+    target: Dict[str, Any] = Field(default_factory=dict)
+    current: Dict[str, Any] = Field(default_factory=dict)
+    gapJson: Dict[str, List[str]] = Field(default_factory=lambda: {"missing": []})
+
+
+class EvaluateAssessmentRequestDto(BaseModel):
+    answer: SurveyAnswerJsonDto
+    gapJson: Optional[Dict[str, Any]] = None

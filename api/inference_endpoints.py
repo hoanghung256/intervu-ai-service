@@ -10,7 +10,7 @@ from api.dtos import (
     AssessmentRequest, AssessmentResponse, SimilarityCheckRequest,
     CVResponse, JDResponse, TranscriptResponse, AskRequest, AnswerResponse,
     ExtractQuestionsRequest, ExtractQuestionsResponse,
-    CvEvaluationResponse, LLMUsage
+    CvEvaluationResponse, EvaluateAssessmentRequestDto, SurveySummaryResultDto, LLMUsage
 )
 from api.roadmap_dto import RoadmapRequest, RoadmapResponse, RoadmapProgressUpdateRequest
 from infrastructure.model_provider.llm_provider import LLMProvider
@@ -191,6 +191,22 @@ async def generate_assessment(
         }
     except Exception as e:
         logging.error(f"Error in generate_assessment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/evaluate-assessment", response_model=SurveySummaryResultDto)
+async def evaluate_assessment(
+    request: EvaluateAssessmentRequestDto,
+    assessment_service: AssessmentService = Depends(get_assessment_service)
+):
+    try:
+        gap_payload = request.gapJson or {}
+        return await assessment_service.evaluate_answer_json(
+            answer=request.answer,
+            gap_input=gap_payload,
+        )
+    except Exception as e:
+        logging.error(f"Error in evaluate_assessment: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/last-cv-pdf-url")
