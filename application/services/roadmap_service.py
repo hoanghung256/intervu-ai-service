@@ -5,7 +5,7 @@ from typing import Optional
 
 from api.roadmap_dto import CoachCatalogEntry, RoadmapRequest
 from infrastructure.model_provider.llm_provider import LLMProvider
-from infrastructure.model_provider.model_constants import GEMINI_DEFAULT_MODEL, HUGGINGFACE_DEFAULT_MODEL
+from infrastructure.model_provider.model_constants import HUGGINGFACE_LLAMA_3_3_70B_INSTRUCT_GROQ
 
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
@@ -193,7 +193,7 @@ Gap: {request.gap}
         prompt = base_prompt + request_payload
 
         # response_text, usage = await self.llm_provider.generate_content(prompt, model=HUGGINGFACE_DEFAULT_MODEL)
-        response_text, usage = await self.llm_provider.generate_content(prompt, model=GEMINI_DEFAULT_MODEL)
+        response_text, usage = await self.llm_provider.generate_content(prompt, model=HUGGINGFACE_LLAMA_3_3_70B_INSTRUCT_GROQ)
 
         try:
             cleaned_json = self.llm_provider.clean_json_string(response_text)

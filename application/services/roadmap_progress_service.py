@@ -4,7 +4,7 @@ import logging
 
 from api.roadmap_dto import RoadmapProgressUpdateRequest
 from infrastructure.model_provider.llm_provider import LLMProvider
-from infrastructure.model_provider.model_constants import HUGGINGFACE_DEFAULT_MODEL
+from infrastructure.model_provider.model_constants import HUGGINGFACE_LLAMA_3_3_70B_INSTRUCT_GROQ
 
 
 _ZERO_USAGE = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -104,7 +104,7 @@ current_roadmap:
 
         response_text, usage = await self.llm_provider.generate_content(
             prompt,
-            model=HUGGINGFACE_DEFAULT_MODEL
+            model=HUGGINGFACE_LLAMA_3_3_70B_INSTRUCT_GROQ
         )
         usage = usage or _ZERO_USAGE
 
