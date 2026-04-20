@@ -2,6 +2,7 @@ import json
 import logging
 from typing import List, Dict
 from infrastructure.model_provider.llm_provider import LLMProvider
+from infrastructure.model_provider.model_constants import HUGGINGFACE_DEFAULT_MODEL
 
 class TranscriptService:
     def __init__(self, llm_provider: LLMProvider):
@@ -51,7 +52,7 @@ class TranscriptService:
         """
         _zero_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         try:
-            content, usage = await self.llm_provider.generate_content(prompt)
+            content, usage = await self.llm_provider.generate_content(prompt, HUGGINGFACE_DEFAULT_MODEL)
             usage = usage or _zero_usage
             cleaned_content = self.llm_provider.clean_json_string(content)
             if cleaned_content:
