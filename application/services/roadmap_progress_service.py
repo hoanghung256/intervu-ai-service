@@ -1,8 +1,37 @@
+import copy
 import json
 import logging
+
 from api.roadmap_dto import RoadmapProgressUpdateRequest
 from infrastructure.model_provider.llm_provider import LLMProvider
 from infrastructure.model_provider.model_constants import HUGGINGFACE_DEFAULT_MODEL
+
+
+_ZERO_USAGE = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+
+def _status_for_progress(progress: int) -> str:
+    if progress >= 80:
+        return "Complete"
+    if progress >= 40:
+        return "Weak"
+    return "Missing"
+
+
+def _apply_node_update(roadmap: dict, target_node_id: str, avg_score: float) -> bool:
+    new_progress = int(round((avg_score / 10.0) * 100))
+    for phase in roadmap.get("phases", []) or []:
+        for node in phase.get("nodes", []) or []:
+            if node.get("skill_id") != target_node_id:
+                continue
+            assessment = node.setdefault("assessment", {})
+            current_progress = assessment.get("progress", 0) or 0
+            final_progress = max(current_progress, new_progress)
+            assessment["progress"] = final_progress
+            assessment["status"] = _status_for_progress(final_progress)
+            return True
+    return False
+
 
 class RoadmapProgressService:
     def __init__(self, llm_provider: LLMProvider):
@@ -14,6 +43,16 @@ class RoadmapProgressService:
             if request.evaluation
             else 0
         )
+
+        if request.target_node_id:
+            updated = copy.deepcopy(request.current_roadmap)
+            applied = _apply_node_update(updated, request.target_node_id, avg_score)
+            if not applied:
+                logging.warning(
+                    "update_roadmap_progress: target_node_id %s not found in roadmap; returning unchanged",
+                    request.target_node_id,
+                )
+            return updated, _ZERO_USAGE
 
         base_prompt = """
 # ROLE
@@ -63,12 +102,11 @@ current_roadmap:
 
         prompt = base_prompt + request_payload
 
-        _zero_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         response_text, usage = await self.llm_provider.generate_content(
             prompt,
             model=HUGGINGFACE_DEFAULT_MODEL
         )
-        usage = usage or _zero_usage
+        usage = usage or _ZERO_USAGE
 
         try:
             cleaned_json = self.llm_provider.clean_json_string(response_text)

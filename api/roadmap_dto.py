@@ -26,10 +26,29 @@ class GapDto(BaseModel):
     missing: list[str]
 
 
+class CoachServiceEntry(BaseModel):
+    id: str
+    interview_type_name: str
+    price: int = 0
+    duration_minutes: int = 60
+    aim_level_hint: Optional[str] = ""
+
+
+class CoachCatalogEntry(BaseModel):
+    id: str
+    name: str
+    slug_profile_url: Optional[str] = ""
+    avatar_url: Optional[str] = ""
+    skills: list[str] = []
+    bio: Optional[str] = ""
+    services: list[CoachServiceEntry] = []
+
+
 class RoadmapRequest(BaseModel):
     target_skill: TargetSkillDto
     current_level: CurrentLevelDto
     gap: GapDto
+    coach_catalog: list[CoachCatalogEntry] = []
 
     @model_validator(mode="before")
     @classmethod
@@ -62,6 +81,7 @@ class RoadmapProgressUpdateRequest(BaseModel):
     interview_type: str
     aim_level: Optional[str] = ""
     evaluation: list[EvaluationItemDto]
+    target_node_id: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
