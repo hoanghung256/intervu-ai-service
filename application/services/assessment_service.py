@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Set, Union
 
 from api.dtos import AssessmentRequest, SurveyAnswerJsonDto, SurveyResponsesDto, SurveySummaryResultDto
 from infrastructure.model_provider.llm_provider import LLMProvider
-from infrastructure.model_provider.model_constants import GEMINI_GEMMA_3_27B_IT
+from infrastructure.model_provider.model_constants import HUGGINGFACE_LLAMA_3_3_70B_INSTRUCT_GROQ
 
 CONTRACTIONS = {
     "i'm": "i am",
@@ -665,7 +665,7 @@ Output schema:
             t0 = perf_counter()
             response_text, usage = await self.llm_provider.generate_content(
                 prompt=prompt,
-                model=GEMINI_GEMMA_3_27B_IT,
+                model=HUGGINGFACE_LLAMA_3_3_70B_INSTRUCT_GROQ,
             )
             timings_ms["llm_generate"] = round((perf_counter() - t0) * 1000, 3)
 
@@ -688,7 +688,7 @@ Content:
                     repair_start = perf_counter()
                     repaired_text, _ = await self.llm_provider.generate_content(
                         prompt=repair_prompt,
-                        model=GEMINI_GEMMA_3_27B_IT,
+                        model=HUGGINGFACE_LLAMA_3_3_70B_INSTRUCT_GROQ,
                     )
                     timings_ms["llm_repair"] = round((perf_counter() - repair_start) * 1000, 3)
                     repaired_json = self.llm_provider.clean_json_string(repaired_text)
@@ -753,7 +753,7 @@ Content:
                 "coreCount": core_count,
                 "practicalCount": practical_count,
                 "generationMode": generation_mode,
-                "generationModel": GEMINI_GEMMA_3_27B_IT if generation_mode == "llm" else None,
+                "generationModel": HUGGINGFACE_LLAMA_3_3_70B_INSTRUCT_GROQ if generation_mode == "llm" else None,
                 "executionMs": elapsed_ms,
                 "timingsMs": timings_ms,
                 "slowestStage": slowest_stage,
@@ -1056,7 +1056,7 @@ Output schema:
         try:
             response_text, _ = await self.llm_provider.generate_content(
                 prompt=prompt,
-                model=GEMINI_GEMMA_3_27B_IT,
+                model=HUGGINGFACE_LLAMA_3_3_70B_INSTRUCT_GROQ,
             )
             cleaned = self.llm_provider.clean_json_string(response_text)
             parsed = json.loads(cleaned)
