@@ -6,6 +6,8 @@ from deepgram import DeepgramClient
 from infrastructure.env_constants import ENV_DEEPGRAM_API_KEY
 
 class DeepgramService:
+    provider_name = "deepgram"
+
     def __init__(self):
         self.api_key = os.getenv(ENV_DEEPGRAM_API_KEY)
         try:
@@ -13,6 +15,10 @@ class DeepgramService:
         except Exception as e:
             logging.error(f"Deepgram client initialization failed: {e}")
             self.client = None
+
+    @property
+    def is_configured(self) -> bool:
+        return self.client is not None
 
     async def transcribe_file(self, audio_data: bytes) -> Optional[str]:
         if not self.client:
