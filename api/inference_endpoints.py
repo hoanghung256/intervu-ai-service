@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from datetime import datetime
@@ -26,6 +27,13 @@ from application.services.roadmap_progress_service import RoadmapProgressService
 from application.llm.inference_usecase import InferenceUseCase
 from domain.entities.query import Query as QueryEntity
 from infrastructure.external_services.deepgram_service import DeepgramService
+from infrastructure.external_services.elevenlabs_service import ElevenLabsService
+from infrastructure.env_constants import (
+    ENV_TRANSCRIPTION_PROVIDER,
+    DEFAULT_TRANSCRIPTION_PROVIDER,
+    TRANSCRIPTION_PROVIDER_DEEPGRAM,
+    TRANSCRIPTION_PROVIDER_ELEVENLABS,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -75,7 +83,18 @@ def get_roadmap_service(llm_provider: LLMProvider = Depends(get_llm_provider)) -
 def get_roadmap_progress_service(llm_provider: LLMProvider = Depends(get_llm_provider)) -> RoadmapProgressService:
     return RoadmapProgressService(llm_provider)
 
-def get_deepgram_service() -> DeepgramService:
+def get_transcription_provider() -> Union[DeepgramService, ElevenLabsService]:
+    provider_name = os.getenv(ENV_TRANSCRIPTION_PROVIDER, DEFAULT_TRANSCRIPTION_PROVIDER).strip().lower()
+
+    if provider_name == TRANSCRIPTION_PROVIDER_ELEVENLABS:
+        return ElevenLabsService()
+
+    if provider_name != TRANSCRIPTION_PROVIDER_DEEPGRAM:
+        logging.warning(
+            f"Unknown transcription provider '{provider_name}'. "
+            f"Falling back to '{TRANSCRIPTION_PROVIDER_DEEPGRAM}'."
+        )
+
     return DeepgramService()
 
 def get_inference_usecase(llm_provider: LLMProvider = Depends(get_llm_provider)) -> InferenceUseCase:
@@ -232,16 +251,17 @@ async def get_last_cv_pdf_url(id: str = Query("default"), history_repo: HistoryR
 async def extract_transcript(
     file: UploadFile = File(...),
     id: str = Query("default"),
-    deepgram_service: DeepgramService = Depends(get_deepgram_service),
+    transcription_provider: Union[DeepgramService, ElevenLabsService] = Depends(get_transcription_provider),
     transcript_service: TranscriptService = Depends(get_transcript_service),
     tags: Optional[str] = Form(None)
 ):
-    if not deepgram_service.client:
-        raise HTTPException(status_code=503, detail="Deepgram service is not configured")
+    if not transcription_provider.is_configured:
+        provider_name = transcription_provider.provider_name
+        raise HTTPException(status_code=503, detail=f"{provider_name} service is not configured")
 
     try:
         audio_data = await file.read()
-        transcript_text = await deepgram_service.transcribe_file(audio_data)
+        transcript_text = await transcription_provider.transcribe_file(audio_data)
         if not transcript_text:
             raise HTTPException(status_code=400, detail="Transcription failed")
 
