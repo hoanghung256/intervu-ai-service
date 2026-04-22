@@ -311,16 +311,27 @@ class AssessmentService:
         question: str,
     ) -> str:
         hints = self._build_level_hints(skill_name, question)
-        stem = normalize_text(question).rstrip("?")
-        short_stem = stem[:90] + "..." if len(stem) > 90 else stem
+        base = normalize_text(base_text)
 
         if level_idx == 0:
-            return f"Unclear for this scenario: {short_stem}."
+            return (
+                f"{base} The response cannot yet describe a clear and relevant approach for this scenario, "
+                "including key constraints or expected outcomes."
+            )
         if level_idx == 1:
-            return f"Start with {hints[0]} and basic verification."
+            return (
+                f"{base} Start by {hints[0]}, explain core implementation steps, and run basic verification "
+                "to confirm the solution works as expected."
+            )
         if level_idx == 2:
-            return f"Do {hints[0]}, then {hints[1]}, and validate with metrics."
-        return f"Lead {hints[0]}, {hints[1]}, and {hints[2]} with safe rollout."
+            return (
+                f"{base} Execute {hints[0]}, then {hints[1]}, and validate results with clear metrics, "
+                "trade-off analysis, and a practical mitigation plan."
+            )
+        return (
+            f"{base} Lead end-to-end by {hints[0]}, {hints[1]}, and {hints[2]}, while coordinating risk controls "
+            "and a safe production rollout strategy."
+        )
 
     def _is_generic_option_text(self, text: str, question: str) -> bool:
         content = normalize_text(text)
@@ -635,6 +646,8 @@ Requirements:
 - For EACH question, return 4 options with levels "1","2","3","4".
 - Option text must be scenario-specific and directly related to the question context.
 - Options must be distinct in action depth, not just rewording level labels.
+- Each option should be a complete sentence with medium length (around 18-30 words).
+- Do not truncate option text and do not use trailing ellipsis.
 - Do NOT output generic phrases like "Can demonstrate ... capability".
 - Do not return markdown or comments.
 
