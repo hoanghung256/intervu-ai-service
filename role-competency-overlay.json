@@ -1,0 +1,95 @@
+{
+  "_comment": "Sidecar to role-skill-framework.json. Adds weight (0-1) and interview_critical per skill so the roadmap can prioritize by impact, not just by gap size. Skills not listed here inherit the defaults block.",
+  "defaults": {
+    "weight": 0.7,
+    "interview_critical": false
+  },
+  "overlays": {
+    "backend_engineer": {
+      "fresher": {
+        "REST API Development":               { "weight": 1.0, "interview_critical": true },
+        "Database Design":                    { "weight": 0.9, "interview_critical": true },
+        "ORM and Data Access":                { "weight": 0.7, "interview_critical": false },
+        "Authentication and Authorization":   { "weight": 0.6, "interview_critical": false },
+        "Automated Backend Testing":          { "weight": 0.5, "interview_critical": false },
+        "Containerization and Deployment":    { "weight": 0.4, "interview_critical": false },
+        "Logging and Monitoring":             { "weight": 0.4, "interview_critical": false },
+        "Caching":                            { "weight": 0.4, "interview_critical": false }
+      },
+      "junior": {
+        "REST API Development":               { "weight": 1.0, "interview_critical": true },
+        "Database Design":                    { "weight": 1.0, "interview_critical": true },
+        "ORM and Data Access":                { "weight": 0.9, "interview_critical": true },
+        "Authentication and Authorization":   { "weight": 0.8, "interview_critical": true },
+        "Microservices Architecture":         { "weight": 0.6, "interview_critical": false },
+        "Automated Backend Testing":          { "weight": 0.7, "interview_critical": false },
+        "Containerization and Deployment":    { "weight": 0.5, "interview_critical": false },
+        "Performance Optimization":           { "weight": 0.7, "interview_critical": false },
+        "Logging and Monitoring":             { "weight": 0.5, "interview_critical": false },
+        "Caching":                            { "weight": 0.6, "interview_critical": false }
+      },
+      "middle": {
+        "REST API Development":               { "weight": 1.0, "interview_critical": true },
+        "Database Design":                    { "weight": 1.0, "interview_critical": true },
+        "Authentication and Authorization":   { "weight": 0.9, "interview_critical": true },
+        "System Integration":                 { "weight": 0.8, "interview_critical": true },
+        "Message Queue Processing":           { "weight": 0.8, "interview_critical": true },
+        "Concurrency and Scalability":        { "weight": 0.9, "interview_critical": true },
+        "Performance Optimization":           { "weight": 0.9, "interview_critical": true },
+        "Secure Coding for Backend":          { "weight": 0.8, "interview_critical": true }
+      },
+      "senior": {
+        "Microservices Architecture":         { "weight": 1.0, "interview_critical": true },
+        "System Integration":                 { "weight": 0.9, "interview_critical": true },
+        "Concurrency and Scalability":        { "weight": 1.0, "interview_critical": true },
+        "CI/CD for Backend Services":         { "weight": 0.7, "interview_critical": false },
+        "Secure Coding for Backend":          { "weight": 0.9, "interview_critical": true },
+        "Performance Optimization":           { "weight": 1.0, "interview_critical": true },
+        "Logging and Monitoring":             { "weight": 0.8, "interview_critical": true },
+        "Message Queue Processing":           { "weight": 0.8, "interview_critical": true }
+      }
+    },
+    "frontend_engineer": {
+      "fresher": {
+        "HTML and Semantic Markup":              { "weight": 0.9, "interview_critical": true },
+        "CSS and Styling Architecture":          { "weight": 0.9, "interview_critical": true },
+        "JavaScript and TypeScript Development": { "weight": 1.0, "interview_critical": true },
+        "Frontend Framework Development":        { "weight": 1.0, "interview_critical": true },
+        "Responsive UI Development":             { "weight": 0.7, "interview_critical": false },
+        "API Integration in Frontend":           { "weight": 0.7, "interview_critical": false },
+        "Frontend Testing":                      { "weight": 0.5, "interview_critical": false },
+        "Web Accessibility":                     { "weight": 0.4, "interview_critical": false }
+      },
+      "junior": {
+        "JavaScript and TypeScript Development": { "weight": 1.0, "interview_critical": true },
+        "Frontend Framework Development":        { "weight": 1.0, "interview_critical": true },
+        "State Management":                      { "weight": 0.9, "interview_critical": true },
+        "Responsive UI Development":             { "weight": 0.7, "interview_critical": false },
+        "API Integration in Frontend":           { "weight": 0.8, "interview_critical": true },
+        "Frontend Testing":                      { "weight": 0.7, "interview_critical": false },
+        "Frontend Performance Optimization":     { "weight": 0.7, "interview_critical": false },
+        "Build Tools and Bundling":              { "weight": 0.6, "interview_critical": false }
+      },
+      "middle": {
+        "Frontend Framework Development":        { "weight": 1.0, "interview_critical": true },
+        "State Management":                      { "weight": 1.0, "interview_critical": true },
+        "UI Component Design":                   { "weight": 0.9, "interview_critical": true },
+        "Frontend Performance Optimization":     { "weight": 0.9, "interview_critical": true },
+        "Web Accessibility":                     { "weight": 0.6, "interview_critical": false },
+        "Frontend Testing":                      { "weight": 0.8, "interview_critical": true },
+        "Build Tools and Bundling":              { "weight": 0.7, "interview_critical": false },
+        "Browser Debugging and Troubleshooting": { "weight": 0.7, "interview_critical": false }
+      },
+      "senior": {
+        "UI Component Design":                   { "weight": 1.0, "interview_critical": true },
+        "Frontend Performance Optimization":     { "weight": 1.0, "interview_critical": true },
+        "State Management":                      { "weight": 1.0, "interview_critical": true },
+        "Frontend Testing":                      { "weight": 0.9, "interview_critical": true },
+        "Web Accessibility":                     { "weight": 0.7, "interview_critical": false },
+        "Build Tools and Bundling":              { "weight": 0.8, "interview_critical": true },
+        "Browser Debugging and Troubleshooting": { "weight": 0.7, "interview_critical": false },
+        "API Integration in Frontend":           { "weight": 0.8, "interview_critical": true }
+      }
+    }
+  }
+}

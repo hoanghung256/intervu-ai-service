@@ -24,6 +24,7 @@ from application.services.similarity_service import SimilarityService
 from application.services.transcript_service import TranscriptService
 from application.services.roadmap_service import RoadmapService
 from application.services.roadmap_progress_service import RoadmapProgressService
+from application.services.competency_matrix_service import CompetencyMatrixService
 from application.llm.inference_usecase import InferenceUseCase
 from domain.entities.query import Query as QueryEntity
 from infrastructure.external_services.deepgram_service import DeepgramService
@@ -349,6 +350,24 @@ async def update_roadmap_progress(
     except Exception as e:
         logging.error(f"Error in update_roadmap_progress: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/competency-matrix/{role}/{level}")
+async def get_competency_matrix(role: str, level: str):
+    """Return the competency matrix slice for a (role, level) pair.
+
+    The .NET BE consumes this to drive `ResolveSkillScope` instead of hardcoding
+    skill arrays in C#. Free-form role/level strings are accepted — the matrix
+    service normalises them ("Backend Developer" → "backend_engineer", "mid" →
+    "middle"). Always returns a payload (never 404); empty `skills` means the
+    matrix has no entry for that combination.
+    """
+    matrix = CompetencyMatrixService.get_matrix(role, level)
+    return {
+        "role_key": matrix.role_key,
+        "level_key": matrix.level_key,
+        "skills": [s.model_dump() for s in matrix.skills],
+    }
 
 
 @router.post("/check-similarity")
