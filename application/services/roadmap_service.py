@@ -153,34 +153,6 @@ def _score(node_tokens: set[str], coach_tokens: set[str]) -> float:
     return overlap / (len(node_tokens) + 1e-6)
 
 
-def _pick_service(coach: CoachCatalogEntry, node_tokens: set[str], target_level: str) -> Optional[dict]:
-    if not coach.services:
-        return None
-
-    target = (target_level or "").strip().lower()
-    best = None
-    best_score = -1.0
-    for service in coach.services:
-        type_tokens = _tokenize(service.interview_type_name)
-        overlap = len(type_tokens & node_tokens)
-        aim = (service.aim_level_hint or "").strip().lower()
-        level_bonus = 1 if aim and target and aim == target else 0
-        score = overlap * 2 + level_bonus
-        if score > best_score:
-            best_score = score
-            best = service
-
-    if best is None:
-        best = coach.services[0]
-
-    return {
-        "id": best.id,
-        "interview_type_name": best.interview_type_name,
-        "price": best.price,
-        "duration_minutes": best.duration_minutes,
-    }
-
-
 def _attach_recommendations(roadmap: dict, catalog: list[CoachCatalogEntry]) -> dict:
     if not catalog:
         return roadmap
@@ -198,17 +170,12 @@ def _attach_recommendations(roadmap: dict, catalog: list[CoachCatalogEntry]) -> 
                 reverse=True,
             )
             coach, _ = ranked[0]
-            target_level = (node.get("assessment") or {}).get("target_level", "")
-            service = _pick_service(coach, n_tokens, target_level)
-            if service is None:
-                continue
             node["recommended_coach"] = {
                 "id": coach.id,
                 "name": coach.name,
                 "slug_profile_url": coach.slug_profile_url or "",
                 "avatar_url": coach.avatar_url or "",
             }
-            node["recommended_service"] = service
 
     return roadmap
 
