@@ -221,10 +221,12 @@ async def evaluate_assessment(
 ):
     try:
         gap_payload = request.gapJson or {}
-        return await assessment_service.evaluate_answer_json(
+        result, usage = await assessment_service.evaluate_answer_json(
             answer=request.answer,
             gap_input=gap_payload,
         )
+        result.usage = LLMUsage(**usage)
+        return result
     except Exception as e:
         logging.error(f"Error in evaluate_assessment: {e}")
         raise HTTPException(status_code=500, detail=str(e))

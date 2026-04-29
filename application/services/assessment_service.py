@@ -993,11 +993,12 @@ Content:
 
         return {"idx": best_idx, "score": round(best_score, 4)}
 
-    async def _infer_levels_from_answers_ai(self, items: List[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+    async def _infer_levels_from_answers_ai(self, items: List[Dict[str, Any]]) -> tuple:
+        _zero = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         if not self.llm_provider or not hasattr(self.llm_provider, "generate_content"):
-            return {}
+            return {}, _zero
         if not items:
-            return {}
+            return {}, _zero
 
         eval_items: List[Dict[str, Any]] = []
         for item in items:
@@ -1030,7 +1031,7 @@ Content:
             )
 
         if not eval_items:
-            return {}
+            return {}, _zero
 
         prompt = f"""
 You are scoring candidate answers against skill level descriptions.
@@ -1054,7 +1055,7 @@ Output schema:
 }}
 """
         try:
-            response_text, _ = await self.llm_provider.generate_content(
+            response_text, ai_usage = await self.llm_provider.generate_content(
                 prompt=prompt,
                 model=HUGGINGFACE_LLAMA_3_3_70B_INSTRUCT_GROQ,
             )
@@ -1062,11 +1063,11 @@ Output schema:
             parsed = json.loads(cleaned)
         except Exception as ex:
             self.logger.warning(f"AI scoring batch failed: {ex}")
-            return {}
+            return {}, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         results = parsed.get("results", []) if isinstance(parsed, dict) else []
         if not isinstance(results, list):
-            return {}
+            return {}, ai_usage
 
         output: Dict[int, Dict[str, Any]] = {}
         for row in results:
@@ -1094,7 +1095,7 @@ Output schema:
                 "rawLevel": level_raw,
             }
 
-        return output
+        return output, ai_usage
 
     async def evaluate_survey_responses(
         self,
@@ -1102,7 +1103,7 @@ Output schema:
         target_input: Optional[Dict[str, Any]] = None,
         gap_input: Optional[Dict[str, Any]] = None,
         missing_input: Optional[List[str]] = None,
-    ) -> SurveySummaryResultDto:
+    ) -> tuple:
         answer_payload = request.answer
         answer_responses = answer_payload.responses if answer_payload else []
 
@@ -1137,7 +1138,7 @@ Output schema:
             {"key": idx, "skill": item.skill, "question": item.question, "answer": item.answer}
             for idx, item in enumerate(answer_responses)
         ]
-        ai_inferred_levels = await self._infer_levels_from_answers_ai(ai_items)
+        ai_inferred_levels, ai_usage = await self._infer_levels_from_answers_ai(ai_items)
 
         by_phase: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         scored_responses: List[Dict[str, Any]] = []
@@ -1263,12 +1264,12 @@ Output schema:
             gapJson={
                 "missing": resolved_gap["missing"],
             },
-        )
+        ), ai_usage
 
     async def evaluate_answer_json(
         self,
         answer: SurveyAnswerJsonDto,
         gap_input: Optional[Dict[str, Any]] = None,
-    ) -> SurveySummaryResultDto:
+    ) -> tuple:
         req = SurveyResponsesDto(answer=answer)
         return await self.evaluate_survey_responses(req, gap_input=gap_input)
