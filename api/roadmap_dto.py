@@ -90,9 +90,40 @@ class RoadmapNodeAssessmentSchema(BaseModel):
     current_level: str = ""
     target_level: str = ""
     sfia_level: int = 0
-    status: Literal["Weak", "Missing", "Complete"] = "Weak"
+    status: Literal["Weak", "Missing", "Complete", "Locked", "Unlocked", "Passed", "Needs Improvement"] = "Weak"
     progress: int = Field(default=0, ge=0, le=100)
     score: float = 0.0
+
+
+class RubricEvaluationItemSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    type: str = ""
+    score: int = Field(default=0, ge=0, le=10)
+    question: str = ""
+    answer: str = ""
+
+
+class RubricEvaluationSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    interview_room_id: str = ""
+    submitted_at: str = ""
+    total_percentage: int = Field(default=0, ge=0, le=100)
+    pass_threshold: int = Field(default=70, ge=1, le=100)
+    status: Literal["Passed", "Needs Improvement"] = "Needs Improvement"
+    low_score_categories: List[str] = Field(default_factory=list)
+    items: List[RubricEvaluationItemSchema] = Field(default_factory=list)
+
+
+class RoadmapCheckpointSchema(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    title: str = ""
+    objective: str = ""
+    pass_threshold: int = Field(default=70, ge=1, le=100)
+    interview_room_id: Optional[str] = None
+    rubric_evaluation: Optional[RubricEvaluationSchema] = None
 
 
 class RoadmapChildSkillSchema(BaseModel):
@@ -108,8 +139,11 @@ class RoadmapChildSkillSchema(BaseModel):
 class RoadmapNodeSchema(BaseModel):
     model_config = ConfigDict(extra="allow")
 
+    node_id: str = ""
     skill_id: str
     skill_name: str = ""
+    pillar_type: Literal["HARD_SKILL", "SOFT_SKILL", "LIVE_CHECKPOINT"] = "HARD_SKILL"
+    checkpoint: Optional[RoadmapCheckpointSchema] = None
     assessment: RoadmapNodeAssessmentSchema = Field(default_factory=RoadmapNodeAssessmentSchema)
     child_skills: List[Union[str, RoadmapChildSkillSchema]] = Field(default_factory=list)
     mentor_note: str = ""
@@ -122,6 +156,11 @@ class RoadmapPhaseSchema(BaseModel):
     phase_id: str
     phase_name: str
     phase_description: str = ""
+    status: Literal["Locked", "Unlocked", "Passed", "Needs Improvement"] = "Unlocked"
+    is_unlocked: bool = True
+    unlocked_at: Optional[str] = None
+    passed_at: Optional[str] = None
+    checkpoint_evaluation: Optional[RubricEvaluationSchema] = None
     nodes: List[RoadmapNodeSchema] = Field(default_factory=list)
 
 
@@ -140,6 +179,7 @@ class RoadmapDocumentSchema(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    schema_version: int = 2
     roadmap_metadata: RoadmapMetadataSchema = Field(default_factory=RoadmapMetadataSchema)
     phases: List[RoadmapPhaseSchema] = Field(default_factory=list)
 

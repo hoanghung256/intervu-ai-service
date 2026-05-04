@@ -35,6 +35,33 @@ _QUESTION_EXCERPT_LIMIT = 220
 # the purpose of surfacing as excerpts. Tuned to catch genuinely weak answers
 # without flagging every middling response.
 _FAILED_SCORE_THRESHOLD = 50.0
+_PRODUCTION_SKILL_TOKENS = {
+    "automated",
+    "build",
+    "bundling",
+    "ci/cd",
+    "debugging",
+    "deployment",
+    "logging",
+    "monitoring",
+    "observability",
+    "optimization",
+    "performance",
+    "testing",
+    "troubleshooting",
+}
+_SPECIALIZED_SKILL_TOKENS = {
+    "architecture",
+    "authorization",
+    "caching",
+    "concurrency",
+    "integration",
+    "microservices",
+    "queue",
+    "scalability",
+    "secure",
+    "security",
+}
 
 
 def _parse_level(value: Any) -> int:
@@ -165,6 +192,29 @@ def _classify_status(current: int, target: int) -> str:
     return "weak"
 
 
+def _progression_stage(skill_name: str, sequence_index: int, total_matrix_skills: int) -> str:
+    """Classify a skill into a broad learnable phase.
+
+    The role matrix order remains the source of truth. Keyword overrides keep
+    production-readiness and specialized architecture skills from appearing
+    before fundamentals when weights or gaps are large.
+    """
+    normalized = _normalize_skill_key(skill_name)
+    tokens = set(re.findall(r"[a-z0-9/]+", normalized))
+
+    if tokens & _PRODUCTION_SKILL_TOKENS:
+        return "production"
+    if tokens & _SPECIALIZED_SKILL_TOKENS:
+        return "specialized"
+
+    if total_matrix_skills <= 0:
+        return "core"
+    first_core_index = max(1, total_matrix_skills // 3)
+    if sequence_index < first_core_index:
+        return "foundation"
+    return "core"
+
+
 class StrategyService:
     """Pure functions only — no LLM, no I/O beyond the matrix file load.
 
@@ -179,8 +229,9 @@ class StrategyService:
     ) -> Tuple[List[LearningMission], List[LearningMission]]:
         """Return `(active_missions, mastered_missions)`.
 
-        - `active_missions` is sorted by priority_weight desc; mastered skills are
-          excluded so the roadmap LLM never sees them as candidates for nodes.
+        - `active_missions` is scoped to the role/level matrix when one exists,
+          then sorted by learning progression. Mastered skills are excluded so
+          the roadmap LLM never sees them as candidates for nodes.
         - `mastered_missions` is the ledger of "you already met target on these"
           for the FE to show as a "skills you have" badge.
 
@@ -195,6 +246,9 @@ class StrategyService:
         matrix_index: Dict[str, SkillCompetency] = {
             _normalize_skill_key(item.skill): item for item in matrix.skills
         }
+        matrix_order: Dict[str, int] = {
+            _normalize_skill_key(item.skill): idx for idx, item in enumerate(matrix.skills)
+        }
 
         skill_index: Dict[str, SkillLevelDto] = {
             _normalize_skill_key(s.skill): s for s in (request.current_level.skills or []) if s.skill
@@ -205,18 +259,20 @@ class StrategyService:
 
         band_fallback = level_key_to_band(normalize_level_key(target_level_str))
 
-        # Universe of skills to consider: every skill in current_level, every
-        # gap entry, plus every matrix skill (so missing-from-assessment skills
-        # the matrix expects still surface).
+        # Universe of skills to consider: the role/level matrix when available.
+        # Raw assessment/gap skills outside that matrix are deliberately ignored
+        # so a Junior roadmap cannot drift into unrelated or higher-band topics.
+        # If the matrix is unavailable, fall back to the incoming assessment data.
         candidate_keys: Dict[str, str] = {}  # key -> display name
-        for s in request.current_level.skills or []:
-            if s.skill:
-                candidate_keys[_normalize_skill_key(s.skill)] = s.skill
-        for gap_skill in (request.gap.weak or []) + (request.gap.missing or []):
-            if gap_skill:
-                candidate_keys.setdefault(_normalize_skill_key(gap_skill), gap_skill)
         for matrix_skill in matrix.skills:
             candidate_keys.setdefault(_normalize_skill_key(matrix_skill.skill), matrix_skill.skill)
+        if not candidate_keys:
+            for s in request.current_level.skills or []:
+                if s.skill:
+                    candidate_keys[_normalize_skill_key(s.skill)] = s.skill
+            for gap_skill in (request.gap.weak or []) + (request.gap.missing or []):
+                if gap_skill:
+                    candidate_keys.setdefault(_normalize_skill_key(gap_skill), gap_skill)
 
         active: List[LearningMission] = []
         mastered: List[LearningMission] = []
@@ -268,6 +324,12 @@ class StrategyService:
                 priority_weight=priority_weight,
                 status=status,  # type: ignore[arg-type]
                 interview_critical=interview_critical,
+                sequence_index=matrix_order.get(key, len(matrix_order)),
+                progression_stage=_progression_stage(
+                    display_name,
+                    matrix_order.get(key, len(matrix_order)),
+                    len(matrix_order),
+                ),
                 score=score,
                 confidence_in_assessment=confidence,
                 time_estimate_hours=_time_estimate(delta, weight),
@@ -282,15 +344,14 @@ class StrategyService:
 
         active.sort(
             key=lambda m: (
-                m.priority_weight,
-                1 if m.interview_critical else 0,
-                m.delta,
-                # Negative score so lower scores (more remedial) sort earlier
-                # within the same priority_weight band.
-                -m.score,
+                {"foundation": 0, "core": 1, "specialized": 2, "production": 3}.get(m.progression_stage, 1),
+                m.sequence_index,
+                -m.priority_weight,
+                -1 if m.interview_critical else 0,
+                -m.delta,
+                m.score,
                 m.skill_name,
             ),
-            reverse=True,
         )
 
         # Mastered list ordering doesn't drive logic; sort by name for stable output.

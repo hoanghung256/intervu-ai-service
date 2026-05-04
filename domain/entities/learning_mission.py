@@ -35,6 +35,12 @@ class LearningMission(BaseModel):
 
     status: MissionStatus
     interview_critical: bool
+    sequence_index: int = 0
+    """Stable role/level matrix position used to keep roadmap progression linear."""
+
+    progression_stage: str = "core"
+    """Broad learning stage used by the roadmap planner to group related skills."""
+
     score: float = 0.0
     """0-100 from the assessment. Lower = more remedial work needed."""
 
