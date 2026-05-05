@@ -26,7 +26,6 @@
         { "skill": "Database Design", "min_level": 1 },
         { "skill": "ORM and Data Access", "min_level": 1 },
         { "skill": "Authentication and Authorization", "min_level": 1 },
-        { "skill": "Automated Backend Testing", "min_level": 1 },
         { "skill": "Containerization and Deployment", "min_level": 1 },
         { "skill": "Logging and Monitoring", "min_level": 1 },
         { "skill": "Caching", "min_level": 1 }
@@ -36,8 +35,6 @@
         { "skill": "Database Design", "min_level": 2 },
         { "skill": "ORM and Data Access", "min_level": 2 },
         { "skill": "Authentication and Authorization", "min_level": 2 },
-        { "skill": "Microservices Architecture", "min_level": 2 },
-        { "skill": "Automated Backend Testing", "min_level": 2 },
         { "skill": "Containerization and Deployment", "min_level": 2 },
         { "skill": "Performance Optimization", "min_level": 2 },
         { "skill": "Logging and Monitoring", "min_level": 2 },
